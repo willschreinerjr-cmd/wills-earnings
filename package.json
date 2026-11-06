@@ -1,0 +1,12 @@
+{
+  "name": "wills-earnings",
+  "private": true,
+  "description": "Will Schreiner's private earnings tracker (Google Apps Script web app) connected to TwoBirds Tipout.",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "dev": "node dev/server.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

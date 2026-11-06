@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Will's Earnings</title>
+  <style>
+    :root{
+      --bg:#f6f7f9; --card:#fff; --border:#e5e7eb; --text:#111827; --muted:#6b7280;
+      --green:#1f9d55; --green-dark:#178a48; --red:#b91c1c; --amber:#92400e;
+    }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+    .app{ max-width:880px; margin:0 auto; padding:24px 18px 48px; }
+    header{ display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:6px 16px; margin-bottom:18px; }
+    h1{ margin:0; font-size:28px; font-weight:900; letter-spacing:.5px; }
+    .private-note{ color:var(--muted); font-size:13px; font-weight:600; }
+    .card{ background:var(--card); border:1px solid var(--border); border-radius:18px; padding:20px; margin-bottom:16px; box-shadow:0 8px 22px rgba(0,0,0,.04); }
+    .period-nav{ display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+    .period-nav select{ flex:1; min-width:0; }
+    button, select, input, textarea{ font:inherit; }
+    button{ padding:10px 14px; border-radius:12px; border:1px solid var(--border); background:#f4f5f7; color:#1f2937; font-weight:700; cursor:pointer; }
+    button:hover{ background:#eef0f3; }
+    button:disabled{ opacity:.5; cursor:not-allowed; }
+    button.primary{ background:var(--green); border-color:var(--green); color:#fff; }
+    button.primary:hover{ background:var(--green-dark); }
+    button.danger{ background:#fef2f2; border-color:#fecaca; color:var(--red); }
+    button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible{ outline:3px solid rgba(31,157,85,.35); outline-offset:1px; }
+    select, input, textarea{ padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:#fff; color:var(--text); font-size:16px; width:100%; }
+    .nav-arrow{ flex:0 0 auto; width:44px; padding:10px 0; font-size:18px; }
+    .period-heading{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+    h2{ margin:0; font-size:20px; font-weight:900; }
+    .pill{ display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:800; letter-spacing:.3px; border:1px solid; }
+    .pill.awaiting{ color:#374151; background:#f3f4f6; border-color:#d1d5db; }
+    .pill.verified{ color:#166534; background:#f0fdf4; border-color:#86efac; }
+    .pill.needs_review{ color:var(--amber); background:#fffbeb; border-color:#fcd34d; }
+    .pill.current{ color:#1e3a8a; background:#eff6ff; border-color:#bfdbfe; }
+    .muted{ color:var(--muted); font-size:13px; }
+    table{ width:100%; border-collapse:collapse; margin-top:14px; font-size:15px; }
+    th{ text-align:left; font-size:13px; color:#374151; font-weight:800; padding:8px 6px; border-bottom:1px solid var(--border); }
+    td{ padding:12px 6px; border-bottom:1px solid var(--border); }
+    .right{ text-align:right; }
+    tbody tr.shift{ cursor:pointer; }
+    tbody tr.shift:hover, tbody tr.selected{ background:#f3f4f6; }
+    .shift-date{ background:none; border:0; padding:0; font-weight:800; color:var(--text); text-decoration:underline dotted; text-underline-offset:3px; border-radius:6px; }
+    .shift-date:hover{ background:none; }
+    tfoot th{ border-top:2px solid var(--text); border-bottom:0; font-size:15px; font-weight:900; color:var(--text); padding-top:12px; }
+    .detail-row td{ padding-top:0; }
+    .detail{ background:#f9fafb; border:1px solid var(--border); border-radius:12px; padding:10px 14px; }
+    .line{ display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:14px; }
+    .line.strong{ font-weight:800; }
+    .actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .empty{ color:var(--muted); padding:18px 6px; }
+    .totals{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+    .total{ border:1px solid var(--border); border-radius:14px; padding:14px; background:#fafafa; }
+    .total span{ display:block; font-size:12px; font-weight:900; letter-spacing:.5px; color:#374151; }
+    .total strong{ display:block; margin-top:6px; font-size:30px; font-weight:900; overflow-wrap:anywhere; }
+    .total.deposit{ grid-column:1 / -1; background:#f0fdf4; border-color:#86efac; }
+    .total.deposit strong{ color:#166534; font-size:36px; }
+    .total p{ margin:6px 0 0; }
+    .form-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; }
+    label{ display:block; font-size:13px; font-weight:700; }
+    label > input, label > select, label > textarea{ margin-top:5px; }
+    .full{ grid-column:1 / -1; }
+    .segmented{ display:flex; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+    .segmented label{ flex:1; margin:0; cursor:pointer; }
+    .segmented input{ position:absolute; opacity:0; width:1px; height:1px; }
+    .segmented span{ display:block; padding:10px 8px; text-align:center; font-weight:700; font-size:14px; }
+    .segmented label + label span{ border-left:1px solid var(--border); }
+    .segmented input:checked + span{ background:var(--green); color:#fff; }
+    .segmented input:focus-visible + span{ box-shadow:inset 0 0 0 3px rgba(31,157,85,.35); }
+    .comparison{ margin-top:14px; border-top:1px solid var(--border); padding-top:10px; }
+    details summary{ cursor:pointer; font-weight:800; }
+    .status{ min-height:20px; margin-top:10px; font-size:14px; font-weight:600; }
+    .status.error{ color:var(--red); }
+    .status.success{ color:var(--green-dark); }
+    .loading{ color:var(--muted); padding:24px 4px; }
+    [hidden]{ display:none !important; }
+    @media (max-width:560px){
+      .app{ padding:14px 10px 40px; }
+      .card{ padding:14px; border-radius:14px; }
+      h1{ font-size:24px; }
+      table{ font-size:14px; }
+      th, td{ padding-left:4px; padding-right:4px; }
+      .totals{ grid-template-columns:1fr; }
+      .total strong{ font-size:28px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>WILL'S EARNINGS</h1>
+      <span class="private-note">Private · only your Google account can open this page</span>
+    </header>
+
+    <div id="loading" class="card loading">Loading your earnings…</div>
+    <div id="loadError" class="card" hidden>
+      <p id="loadErrorText" class="status error"></p>
+      <button id="retryLoad" type="button">Try Again</button>
+    </div>
+
+    <main id="main" hidden>
+      <section class="card" aria-labelledby="periodTitle">
+        <div class="period-nav">
+          <button id="olderPeriod" class="nav-arrow" type="button" aria-label="Previous pay period">‹</button>
+          <select id="periodSelect" aria-label="Pay period"></select>
+          <button id="newerPeriod" class="nav-arrow" type="button" aria-label="Next pay period">›</button>
+        </div>
+        <div class="period-heading">
+          <h2 id="periodTitle"></h2>
+          <span id="currentPill" class="pill current" hidden>Current</span>
+          <span id="statusPill" class="pill"></span>
+        </div>
+        <div id="shiftTable"></div>
+        <p id="shiftStatus" class="status" role="status"></p>
+      </section>
+
+      <section class="card" aria-label="Pay period totals">
+        <div class="totals">
+          <div class="total"><span>TOTAL HOURS WORKED</span><strong id="totalHours"></strong></div>
+          <div class="total"><span>TOTAL BEFORE TAXES</span><strong id="totalGross"></strong></div>
+          <div class="total"><span>TOTAL AFTER ESTIMATED TAXES</span><strong id="totalNet"></strong></div>
+          <div class="total"><span>CASH TIPS ALREADY RECEIVED</span><strong id="totalCash"></strong></div>
+          <div class="total deposit">
+            <span>ESTIMATED PAYCHECK DEPOSIT</span><strong id="totalDeposit"></strong>
+            <p class="muted">After-tax earnings minus cash tips you already took home. Payroll withholding and deductions can differ, so this is an estimate.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="paycheckTitle">
+        <h2 id="paycheckTitle">Paycheck Verification</h2>
+        <p class="muted">Optional. Enter what your paystub shows to compare it with your tracked earnings.</p>
+        <form id="paycheckForm">
+          <div class="form-grid">
+            <div class="full">
+              <span class="muted" id="paycheckStatusLabel">Status</span>
+              <div class="segmented" role="radiogroup" aria-labelledby="paycheckStatusLabel">
+                <label><input type="radio" name="status" value="awaiting"><span>Awaiting Paycheck</span></label>
+                <label><input type="radio" name="status" value="verified"><span>Verified</span></label>
+                <label><input type="radio" name="status" value="needs_review"><span>Needs Review</span></label>
+              </div>
+            </div>
+            <label>Actual gross pay ($)<input name="actualGross" inputmode="decimal" placeholder="0.00"></label>
+            <label>Actual taxes withheld ($)<input name="actualTaxes" inputmode="decimal" placeholder="0.00"></label>
+            <label>Actual paycheck deposit ($)<input name="actualDeposit" inputmode="decimal" placeholder="0.00"></label>
+            <label>Other deductions or adjustments ($)<input name="adjustments" inputmode="decimal" placeholder="-0.00"></label>
+            <label class="full">Notes<textarea name="notes" rows="2" maxlength="500"></textarea></label>
+          </div>
+          <div class="actions"><button class="primary" type="submit">Save Paycheck</button></div>
+        </form>
+        <div id="comparison" class="comparison"></div>
+        <p id="paycheckStatus" class="status" role="status"></p>
+      </section>
+
+      <section class="card">
+        <details>
+          <summary>Pay schedule</summary>
+          <p class="muted" id="scheduleSummary"></p>
+          <p class="muted">If your employer changes the schedule, enter the first day of the new schedule. Shifts before that date keep their recorded pay periods, and the new schedule must start after any Verified paycheck.</p>
+          <form id="scheduleForm" class="form-grid">
+            <label>New schedule starts on<input name="startDate" type="date" required></label>
+            <label>Days per pay period<input name="periodDays" type="number" min="7" max="31" step="1" value="14" required></label>
+            <div class="full actions"><button type="submit">Change Schedule</button></div>
+          </form>
+          <p id="scheduleStatus" class="status" role="status"></p>
+        </details>
+      </section>
+    </main>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+let dashboard = null;
+let periodStart = "";
+let selectedShift = "";
+let editingShift = "";
+let busy = false;
+
+function api(name, ...args){
+  return new Promise((resolve, reject) => {
+    google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[name](...args);
+  });
+}
+
+function errorText(error){
+  return String(error && error.message || error || "Something went wrong.").replace(/^(Exception|Error):\s*/, "");
+}
+
+function escapeHtml(value){
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[ch]);
+}
+
+function money(cents){
+  const value = Math.abs(Number(cents) || 0) / 100;
+  const text = "$" + value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return Number(cents) < 0 ? `−${text}` : text;
+}
+
+function centsInput(cents){
+  return cents === null || cents === undefined ? "" : (cents / 100).toFixed(2);
+}
+
+function formatHours(hours){
+  return (Math.round(Number(hours || 0) * 100) / 100).toFixed(2).replace(/0$/, "");
+}
+
+function dateFrom(iso){
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function shortDate(iso){
+  return dateFrom(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function longDate(iso){
+  return dateFrom(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
+}
+
+function periodLabel(period){
+  return `${longDate(period.start)} – ${longDate(period.end)}`;
+}
+
+const STATUS_LABELS = { awaiting: "Awaiting Paycheck", verified: "Verified", needs_review: "Needs Review" };
+
+function setStatus(id, message, type = ""){
+  $(id).textContent = message;
+  $(id).className = `status ${type}`.trim();
+}
+
+function currentPeriod(){
+  return dashboard.periods.find(period => period.start === periodStart) || dashboard.periods[0];
+}
+
+function render(){
+  const periods = dashboard.periods;
+  if (!periods.some(period => period.start === periodStart)) periodStart = dashboard.currentPeriodStart;
+  const period = currentPeriod();
+  const index = periods.indexOf(period);
+  $("periodSelect").innerHTML = periods.map(item =>
+    `<option value="${item.start}">${shortDate(item.start)} – ${shortDate(item.end)}${item.isCurrent ? " (current)" : ""}</option>`
+  ).join("");
+  $("periodSelect").value = period.start;
+  $("olderPeriod").disabled = index >= periods.length - 1;
+  $("newerPeriod").disabled = index <= 0;
+  $("periodTitle").textContent = `Pay Period: ${periodLabel(period)}`;
+  $("currentPill").hidden = !period.isCurrent;
+  $("statusPill").textContent = STATUS_LABELS[period.paycheck.status];
+  $("statusPill").className = `pill ${period.paycheck.status}`;
+  renderShifts(period);
+  renderTotals(period);
+  renderPaycheck(period);
+  const latest = dashboard.schedules[dashboard.schedules.length - 1];
+  $("scheduleSummary").textContent =
+    `Current schedule: ${latest.periodDays}-day pay periods counted from ${longDate(latest.startDate)}, ${latest.startDate.slice(0, 4)}.`;
+}
+
+function renderShifts(period){
+  const locked = period.paycheck.status === "verified";
+  const rows = period.shifts.map(shift => {
+    const selected = shift.id === selectedShift;
+    const id = escapeHtml(shift.id);
+    return `<tr class="shift${selected ? " selected" : ""}" data-action="toggle" data-id="${id}">
+        <td><button class="shift-date" type="button" data-action="toggle" data-id="${id}" aria-expanded="${selected}">${shortDate(shift.shiftDate)}</button></td>
+        <td class="right">${formatHours(shift.hours)}</td>
+        <td class="right">${money(shift.grossCents)}</td>
+        <td class="right">${money(shift.netCents)}</td>
+      </tr>${selected ? `<tr class="detail-row"><td colspan="4">${renderDetail(shift, locked)}</td></tr>` : ""}`;
+  }).join("");
+  $("shiftTable").innerHTML = `<table>
+    <thead><tr><th>Date</th><th class="right">Hours</th><th class="right">Before Tax</th><th class="right">After Tax</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4" class="empty">No shifts saved in this pay period yet. Use “Save My Shift” in TwoBirds Tipout after you work.</td></tr>'}</tbody>
+    <tfoot><tr><th>TOTAL</th><th class="right">${formatHours(period.totals.hours)}</th><th class="right">${money(period.totals.grossCents)}</th><th class="right">${money(period.totals.netCents)}</th></tr></tfoot>
+  </table>`;
+}
+
+function renderDetail(shift, locked){
+  const wedding = shift.eventType === "wedding";
+  if (editingShift === shift.id) {
+    const field = (name, label, value, attrs = "") =>
+      `<label>${label}<input name="${name}" value="${escapeHtml(value)}" ${attrs}></label>`;
+    return `<form class="detail form-grid" id="editForm" data-id="${escapeHtml(shift.id)}">
+      ${field("shiftDate", "Date worked", shift.shiftDate, 'type="date" required')}
+      ${field("venue", "Venue", shift.venue, 'required maxlength="60"')}
+      <label>Event type<select name="eventType">
+        <option value="non-wedding"${wedding ? "" : " selected"}>Non-wedding</option>
+        <option value="wedding"${wedding ? " selected" : ""}>Wedding</option>
+      </select></label>
+      ${field("role", "Role", shift.role, 'maxlength="60"')}
+      ${field("hours", "Hours", shift.hours, 'type="number" step="any" min="0.01" max="24" required')}
+      ${field("cashTips", "Cash tips ($)", centsInput(shift.cashTipsCents), 'inputmode="decimal" required')}
+      ${field("creditTips", "Credit tips ($)", centsInput(shift.creditTipsCents), 'inputmode="decimal" required')}
+      ${field("guarantee", "Wedding guarantee ($)", centsInput(shift.guaranteeCents), 'inputmode="decimal"')}
+      <p class="muted full">Wages and estimated tax are recalculated with this shift's original ${money(shift.hourlyWageCents)}/hour wage and withholding rate. The guarantee only counts for weddings.</p>
+      <div class="actions full">
+        <button class="primary" type="submit">Save Changes</button>
+        <button type="button" data-action="cancel">Cancel</button>
+      </div>
+    </form>`;
+  }
+  const line = (label, value, strong = false) =>
+    `<div class="line${strong ? " strong" : ""}"><span>${label}</span><span>${value}</span></div>`;
+  return `<div class="detail">
+    ${line("Venue", escapeHtml(shift.venue))}
+    ${line("Event", wedding ? "Wedding" : "Non-wedding")}
+    ${line("Role", escapeHtml(shift.role))}
+    ${line("Hours", `${formatHours(shift.hours)} × ${money(shift.hourlyWageCents)}/hour`)}
+    ${line("Hourly wages", money(shift.wageCents))}
+    ${line("Cash tips", money(shift.cashTipsCents))}
+    ${line("Credit tips", money(shift.creditTipsCents))}
+    ${wedding ? line("Wedding guarantee", money(shift.guaranteeCents)) : ""}
+    ${line("Before tax", money(shift.grossCents), true)}
+    ${line("Estimated tax", money(shift.taxCents))}
+    ${line("After estimated tax", money(shift.netCents), true)}
+    ${line("Cash already received", money(-shift.cashReceivedCents))}
+    ${line("Expected through payroll", money(shift.depositCents), true)}
+    ${locked ? '<p class="muted">This pay period is Verified. Change its paycheck status to edit or delete shifts.</p>' : `<div class="actions">
+      <button type="button" data-action="edit" data-id="${escapeHtml(shift.id)}">Edit</button>
+      <button type="button" class="danger" data-action="delete" data-id="${escapeHtml(shift.id)}">Delete</button>
+    </div>`}
+  </div>`;
+}
+
+function renderTotals(period){
+  const totals = period.totals;
+  $("totalHours").textContent = formatHours(totals.hours);
+  $("totalGross").textContent = money(totals.grossCents);
+  $("totalNet").textContent = money(totals.netCents);
+  $("totalCash").textContent = money(totals.cashTipsCents);
+  $("totalDeposit").textContent = money(totals.depositCents);
+}
+
+function renderPaycheck(period){
+  const paycheck = period.paycheck;
+  const form = $("paycheckForm");
+  form.querySelector(`input[name="status"][value="${paycheck.status}"]`).checked = true;
+  form.elements.actualGross.value = centsInput(paycheck.actualGrossCents);
+  form.elements.actualTaxes.value = centsInput(paycheck.actualTaxesCents);
+  form.elements.actualDeposit.value = centsInput(paycheck.actualDepositCents);
+  form.elements.adjustments.value = centsInput(paycheck.adjustmentsCents);
+  form.elements.notes.value = paycheck.notes || "";
+  const difference = (cents, noun) => cents === 0 ? `Matches the estimated ${noun}.`
+    : `${money(Math.abs(cents))} ${cents > 0 ? "higher" : "lower"} than the estimated ${noun}.`;
+  const lines = [
+    `<div class="line"><span>Estimated paycheck deposit</span><span>${money(period.totals.depositCents)}</span></div>`,
+    `<div class="line"><span>Actual paycheck deposit</span><span>${paycheck.actualDepositCents === null ? "Not entered" : money(paycheck.actualDepositCents)}</span></div>`
+  ];
+  if (paycheck.depositDifferenceCents !== null) {
+    lines.push(`<div class="line strong"><span>Difference</span><span>${difference(paycheck.depositDifferenceCents, "deposit")}</span></div>`);
+  }
+  if (paycheck.grossDifferenceCents !== null) {
+    lines.push(`<div class="line"><span>Gross pay vs. tracked earnings</span><span>${difference(paycheck.grossDifferenceCents, "gross")}</span></div>`);
+  }
+  if (paycheck.depositDifferenceCents !== null || paycheck.grossDifferenceCents !== null) {
+    lines.push('<p class="muted">Differences can come from payroll withholding, benefits, or other deductions. Compare with your paystub before assuming an error.</p>');
+  }
+  $("comparison").innerHTML = lines.join("");
+}
+
+async function run(statusId, pending, work, success){
+  if (busy) return;
+  busy = true;
+  document.body.style.cursor = "progress";
+  setStatus(statusId, pending);
+  try {
+    const result = await work();
+    if (result && result.periods) dashboard = result;
+    const message = typeof success === "function" ? success(result) : success;
+    render();
+    setStatus(statusId, message, "success");
+  } catch (error) {
+    setStatus(statusId, errorText(error), "error");
+  } finally {
+    busy = false;
+    document.body.style.cursor = "";
+  }
+}
+
+async function load(){
+  $("loading").hidden = false;
+  $("loadError").hidden = true;
+  try {
+    dashboard = await api("getEarningsData");
+    periodStart = dashboard.currentPeriodStart;
+    $("main").hidden = false;
+    render();
+  } catch (error) {
+    $("loadErrorText").textContent = `Could not load your earnings. ${errorText(error)}`;
+    $("loadError").hidden = false;
+  } finally {
+    $("loading").hidden = true;
+  }
+}
+
+$("retryLoad").addEventListener("click", load);
+$("periodSelect").addEventListener("change", event => {
+  periodStart = event.target.value;
+  selectedShift = editingShift = "";
+  setStatus("shiftStatus", "");
+  setStatus("paycheckStatus", "");
+  render();
+});
+$("olderPeriod").addEventListener("click", () => {
+  const periods = dashboard.periods;
+  const index = periods.indexOf(currentPeriod());
+  if (index < periods.length - 1) $("periodSelect").value = periods[index + 1].start;
+  $("periodSelect").dispatchEvent(new Event("change"));
+});
+$("newerPeriod").addEventListener("click", () => {
+  const index = dashboard.periods.indexOf(currentPeriod());
+  if (index > 0) $("periodSelect").value = dashboard.periods[index - 1].start;
+  $("periodSelect").dispatchEvent(new Event("change"));
+});
+
+$("shiftTable").addEventListener("click", event => {
+  const target = event.target.closest("[data-action]");
+  if (!target || busy) return;
+  const id = target.dataset.id || "";
+  const action = target.dataset.action;
+  if (action === "toggle") {
+    selectedShift = selectedShift === id ? "" : id;
+    editingShift = "";
+    setStatus("shiftStatus", "");
+    render();
+  } else if (action === "edit") {
+    editingShift = id;
+    render();
+    $("editForm")?.querySelector("input")?.focus();
+  } else if (action === "cancel") {
+    editingShift = "";
+    render();
+  } else if (action === "delete") {
+    const shift = currentPeriod().shifts.find(item => item.id === id);
+    if (!shift || !confirm(`Delete your ${shortDate(shift.shiftDate)} shift at ${shift.venue}? This cannot be undone.`)) return;
+    run("shiftStatus", "Deleting shift…", () => api("deleteShift", id), () => {
+      selectedShift = "";
+      return "Shift deleted.";
+    });
+  }
+});
+
+$("shiftTable").addEventListener("submit", event => {
+  event.preventDefault();
+  const form = event.target;
+  if (!form.reportValidity()) return;
+  const id = form.dataset.id;
+  const values = Object.fromEntries(new FormData(form));
+  run("shiftStatus", "Saving changes…", () => api("updateShift", id, values), result => {
+    editingShift = "";
+    const moved = result.periods.find(period => period.shifts.some(shift => shift.id === id));
+    if (moved) periodStart = moved.start;
+    return "Shift updated.";
+  });
+});
+
+$("paycheckForm").addEventListener("submit", event => {
+  event.preventDefault();
+  const form = event.target;
+  const values = Object.fromEntries(new FormData(form));
+  values.periodStart = currentPeriod().start;
+  run("paycheckStatus", "Saving paycheck…", () => api("savePaycheck", values), "Paycheck saved.");
+});
+
+$("scheduleForm").addEventListener("submit", event => {
+  event.preventDefault();
+  const form = event.target;
+  const values = Object.fromEntries(new FormData(form));
+  if (!confirm(`Start ${values.periodDays}-day pay periods on ${values.startDate}? Shifts on or after that date will be regrouped.`)) return;
+  run("scheduleStatus", "Updating schedule…", () => api("addPaySchedule", values),
+    result => `Schedule updated. ${result.moved} shift${result.moved === 1 ? "" : "s"} regrouped.`);
+});
+
+load();
+</script>
+</body>
+</html>
