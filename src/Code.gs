@@ -249,14 +249,14 @@ function buildDashboard(spreadsheet, today) {
     EARNINGS_SHIFT_COLUMNS).filter(record => record.id).map(earningsShiftFromRecord);
   const paychecks = earningsPaychecks(spreadsheet);
   const periods = new Map();
-  const addPeriod = (start, end) => {
-    if (!periods.has(start)) periods.set(start, { start, end, shifts: [] });
+  const addPeriod = start => {
+    if (!periods.has(start)) periods.set(start, { start, end: earningsPayPeriod(schedules, start).end, shifts: [] });
     return periods.get(start);
   };
   const current = earningsPayPeriod(schedules, today);
-  addPeriod(current.start, current.end);
-  shifts.forEach(shift => addPeriod(shift.payPeriodStart, shift.payPeriodEnd).shifts.push(shift));
-  paychecks.forEach(record => addPeriod(record.periodStart, record.periodEnd));
+  addPeriod(current.start);
+  shifts.forEach(shift => addPeriod(shift.payPeriodStart).shifts.push(shift));
+  paychecks.forEach(record => addPeriod(record.periodStart));
 
   const list = [...periods.values()].sort((a, b) => b.start.localeCompare(a.start)).map(period => {
     period.shifts.sort((a, b) => a.shiftDate.localeCompare(b.shiftDate) || a.createdAt.localeCompare(b.createdAt));
@@ -378,11 +378,11 @@ function addPaySchedule(input) {
     const scheduleSheet = earningsSheet(spreadsheet, EARNINGS_SCHEDULE_SHEET, EARNINGS_SCHEDULE_COLUMNS);
     earningsWriteRow(scheduleSheet, scheduleSheet.getLastRow() + 1, [startDate, periodDays, new Date().toISOString()]);
     const updatedSchedules = earningsSchedules(spreadsheet);
-    // Only shifts on or after the new start date move; earlier shifts keep their recorded periods.
+    // Shifts whose recorded period reaches the new start date are regrouped; earlier periods are untouched.
     const sheet = earningsSheet(spreadsheet, EARNINGS_SHIFT_SHEET, EARNINGS_SHIFT_COLUMNS);
     let moved = 0;
     earningsReadRows(sheet, EARNINGS_SHIFT_COLUMNS).filter(record => record.id).forEach(record => {
-      if (record.shiftDate < startDate) return;
+      if (record.shiftDate < startDate && record.payPeriodEnd < startDate) return;
       const shift = earningsShiftFromRecord(record);
       const period = earningsPayPeriod(updatedSchedules, shift.shiftDate);
       if (period.start === shift.payPeriodStart && period.end === shift.payPeriodEnd) return;
@@ -390,6 +390,14 @@ function addPaySchedule(input) {
         ...shift, payPeriodStart: period.start, payPeriodEnd: period.end, updatedAt: new Date().toISOString()
       }));
       moved++;
+    });
+    const paycheckSheet = earningsSheet(spreadsheet, EARNINGS_PAYCHECK_SHEET, EARNINGS_PAYCHECK_COLUMNS);
+    earningsReadRows(paycheckSheet, EARNINGS_PAYCHECK_COLUMNS).forEach(record => {
+      if (!record.periodStart || record.periodEnd < startDate) return;
+      const period = earningsPayPeriod(updatedSchedules, record.periodStart);
+      if (period.start !== record.periodStart || period.end === record.periodEnd) return;
+      earningsWriteRow(paycheckSheet, record.row, EARNINGS_PAYCHECK_COLUMNS.map(column =>
+        column === "periodEnd" ? period.end : record[column]));
     });
     return { ...buildDashboard(spreadsheet, todayBusinessDate()), moved };
   });

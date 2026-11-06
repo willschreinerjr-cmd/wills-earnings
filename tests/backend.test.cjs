@@ -126,16 +126,20 @@ test("paycheck verification stores optional actual amounts, status, and a neutra
 
 test("changing the pay schedule only regroups later shifts and never rewrites verified history", () => {
   const app = ownerApp();
+  const early = seedShift(app, { shiftDate: "2026-10-30" });
   const before = seedShift(app, { shiftDate: "2026-11-12" });
   const after = seedShift(app, { shiftDate: "2026-11-18" });
   app.context.savePaycheck({ periodStart: "2026-10-26", status: "verified" });
   assert.throws(() => app.context.addPaySchedule({ startDate: "2026-11-01", periodDays: 14 }), /Verified pay periods run through 2026-11-08/);
   assert.throws(() => app.context.addPaySchedule({ startDate: "2026-11-16", periodDays: 3 }), /7 to 31/);
   const data = plain(app.context.addPaySchedule({ startDate: "2026-11-16", periodDays: 7 }));
-  assert.equal(data.moved, 1);
+  assert.equal(data.moved, 2);
   const byId = Object.fromEntries(data.periods.flatMap(period => period.shifts.map(shift => [shift.id, [shift.payPeriodStart, shift.payPeriodEnd]])));
-  assert.deepEqual(byId[before.id], ["2026-11-09", "2026-11-22"], "earlier shifts keep their recorded period");
+  assert.deepEqual(byId[before.id], ["2026-11-09", "2026-11-15"], "an earlier shift keeps its period start, which now ends before the new schedule");
   assert.deepEqual(byId[after.id], ["2026-11-16", "2026-11-22"]);
+  assert.deepEqual(data.periods.map(period => [period.start, period.end]).slice(0, 2),
+    [["2026-11-16", "2026-11-22"], ["2026-11-09", "2026-11-15"]], "periods never overlap");
+  assert.equal(byId[early.id][1], "2026-11-08", "verified history is untouched");
   assert.equal(data.schedules.length, 2);
   assert.throws(() => app.context.addPaySchedule({ startDate: "2026-11-16", periodDays: 14 }), /must start after/);
 });
