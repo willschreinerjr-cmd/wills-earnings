@@ -24,7 +24,7 @@ const EARNINGS_PAYCHECK_COLUMNS = [
   "actualDepositCents", "adjustmentsCents", "notes", "updatedAt"
 ];
 const EARNINGS_OWNER_COLUMNS = ["ownerId", "createdAt"];
-const EARNINGS_DEFAULT_SCHEDULE = { startDate: "2026-11-06", periodDays: 14 };
+const EARNINGS_DEFAULT_SCHEDULE = { startDate: "2026-11-02", periodDays: 14 };
 const EARNINGS_INTEGER_FIELDS = [
   "hourlyWageCents", "wageCents", "cashTipsCents", "creditTipsCents", "guaranteeCents", "grossCents",
   "taxCents", "netCents", "cashReceivedCents", "depositCents"
