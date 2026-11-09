@@ -27,7 +27,7 @@ groups shifts into biweekly pay periods and helps verify paychecks.
   Estimated paycheck deposit = after tax − cash tips already received. Saved
   values are kept as recorded; edits reuse the shift's original wage and
   withholding rate.
-- **Pay periods:** 14 days from Monday, Oct 12, 2026 (Oct 12–25, Oct 26–Nov 8, …).
+- **Pay periods:** 14 days from Friday, Nov 6, 2026 (Oct 23–Nov 5, Nov 6–19, …), so each period ends on a payday.
   Each shift stores its pay period when saved. A schedule change (under **Pay
   schedule**) applies only from its start date forward and cannot start inside
   or before a Verified pay period.

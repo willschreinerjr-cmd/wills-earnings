@@ -28,7 +28,7 @@ function connect() {
 
 function event(overrides = {}) {
   return {
-    shiftDate: "2026-11-13", venue: "Society", cashPot: 300, creditPot: 150.5, isWedding: false, guestCount: null,
+    shiftDate: "2026-11-10", venue: "Society", cashPot: 300, creditPot: 150.5, isWedding: false, guestCount: null,
     staff: [
       { role: "Bartender", name: "Will Schreiner", hours: 8.5 },
       { role: "Shift Manager", name: "Staff 2", hours: 6.5 }
@@ -52,11 +52,11 @@ test("a shift saved from TwoBirds Tipout appears in Will's Earnings with matchin
     idempotencyKey: "integration-key-000001", event: event({ isWedding: true, guestCount: 150 }) });
   assert.equal(retry.duplicate, true);
   post({ action: "saveEarningsShift", managerName: will.managerName, authToken: will.authToken,
-    idempotencyKey: "integration-key-000002", event: event({ shiftDate: "2026-11-14", guestCount: 150 }) });
+    idempotencyKey: "integration-key-000002", event: event({ shiftDate: "2026-11-11", guestCount: 150 }) });
 
   const data = plain(earnings.context.getEarningsData());
   const period = data.periods.find(item => item.isCurrent);
-  assert.equal(period.start, "2026-11-09");
+  assert.equal(period.start, "2026-11-06");
   assert.equal(period.shifts.length, 2);
   const [wedding, regular] = period.shifts;
   assert.deepEqual([wedding.eventType, wedding.role, wedding.hours, wedding.wageCents, wedding.cashTipsCents, wedding.creditTipsCents, wedding.guaranteeCents],
@@ -72,7 +72,7 @@ test("a shift saved from TwoBirds Tipout appears in Will's Earnings with matchin
     hours: "8.5", cashTips: "170.00", creditTips: "0", guarantee: "0"
   }));
   assert.equal(edited.periods[0].shifts[1].creditTipsCents, 0);
-  earnings.context.savePaycheck({ periodStart: "2026-11-09", status: "verified" });
+  earnings.context.savePaycheck({ periodStart: "2026-11-06", status: "verified" });
   const locked = post({ action: "saveEarningsShift", managerName: will.managerName, authToken: will.authToken,
     idempotencyKey: "integration-key-000003", event: event() });
   assert.match(locked.error, /Verified/);

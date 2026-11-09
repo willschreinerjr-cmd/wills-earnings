@@ -2,7 +2,7 @@ const vm = require("node:vm");
 const { loadEarningsApp } = require("../dev/fake-apps-script.cjs");
 
 const OWNER = "will@example.test";
-const NOW = new Date("2026-11-10T18:00:00Z");
+const NOW = new Date("2026-11-07T18:00:00Z");
 
 function plain(value) {
   return JSON.parse(JSON.stringify(value));
@@ -18,7 +18,7 @@ function seedShift(app, overrides = {}, owner = OWNER) {
   const constant = name => vm.runInContext(name, c);
   const spreadsheet = c.getDataSpreadsheet(owner);
   const input = {
-    shiftDate: "2026-11-12", venue: "Ivy House", eventType: "non-wedding", role: "Shift Manager", hours: 8.5,
+    shiftDate: "2026-11-09", venue: "Ivy House", eventType: "non-wedding", role: "Shift Manager", hours: 8.5,
     hourlyWageCents: 1500, cashTipsCents: 10000, creditTipsCents: 5000, guaranteeCents: 0,
     withholdingRate: 0.2074821353509878, ...overrides
   };
