@@ -132,8 +132,8 @@
       </section>
 
       <section class="card">
-        <details>
-          <summary>Import a shift from the calculator</summary>
+        <details id="importDetails">
+          <summary>Review a shift from the calculator</summary>
           <p class="muted">Paste your transfer from TwoBirds Tipout, review it, and confirm. Your rates stay in your private tracker. Multiple role entries are saved separately.</p>
           <label>Shift transfer<textarea id="shiftTransfer" rows="4"></textarea></label>
           <div class="actions"><button id="reviewTransfer" type="button">Review Shift</button></div>
@@ -348,6 +348,22 @@ async function load(){
     periodStart = dashboard.currentPeriodStart;
     $("main").hidden = false;
     render();
+    if (google.script.url) {
+      google.script.url.getLocation(location => {
+        const hash = location.hash || "";
+        if (!hash.startsWith("shift=")) return;
+        try {
+          $("shiftTransfer").value = decodeURIComponent(hash.slice(6));
+          $("importDetails").open = true;
+          $("reviewTransfer").click();
+        } catch (error) {
+          $("importDetails").open = true;
+          setStatus("transferStatus", "Could not read the shift. Return to the calculator and try again.", "error");
+        } finally {
+          if (google.script.history) google.script.history.replace(null, null, "");
+        }
+      });
+    }
   } catch (error) {
     $("loadErrorText").textContent = `Could not load your earnings. ${errorText(error)}`;
     $("loadError").hidden = false;
@@ -433,6 +449,7 @@ $("ratesForm").addEventListener("submit", event => {
     dashboard.hourlyRates = result;
     reviewedTransfer = null;
     $("transferReview").hidden = true;
+    if ($("shiftTransfer").value.trim()) $("reviewTransfer").click();
     return "Hourly rates saved.";
   });
 });

@@ -39,18 +39,21 @@ before approving. No one can create or authorize this project on your behalf.
 ## Saving a shift
 
 In the calculator, add your own name and hours, select the event details and
-venue, and choose **Transfer My Shift Privately**. Choose the date and prepare
-the transfer, then copy it. Open your own tracker, paste it under **Import a
-shift from the calculator**, review the details and hourly rates, and confirm.
-The transfer contains your role, hours and allocated tips, but no coworkers'
-names or hourly rates; it is not sent to the shared calculator backend.
+venue, and choose **Save My Shift**. Your private tracker opens with the shift
+ready to review and confirm. The shift contains your role, hours and allocated
+tips, but no coworkers' names or hourly rates; it is not sent to the shared
+calculator backend. If the tracker does not open, allow pop-ups and retry.
+Existing independently deployed trackers must be updated to the latest code
+and redeployed before they can receive a shift this way.
 
 The tracker uses the saved rate for each role and the existing 20.7482% tax
 estimate. Updating rates only affects later imports; saved shifts and edits keep
 their original rates. A shift with multiple role entries is stored as separate
 rows, with wages and estimated tax rounded per row. Repeating an identical
 transfer is rejected; edit an existing row if you need to correct it.
-Transfers pass through your clipboard, so use care on shared devices.
+The shift is temporarily included in the tracker URL fragment in the browser,
+then cleared when the tracker reads it. It may be visible on a shared device
+or in browser history or synchronization, so use a trusted device.
 
 ## How it works
 

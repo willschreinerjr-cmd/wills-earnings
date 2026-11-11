@@ -28,7 +28,10 @@ function createDevApp({ persist = true, activeEmail = OWNER, store, now } = {}) 
 }
 
 const SHIM = `<script>
-window.google = { script: { run: (function make(success, failure) {
+window.google = { script: {
+  url: { getLocation: callback => callback({ hash: window.location.hash.slice(1) }) },
+  history: { replace: () => history.replaceState(null, "", location.pathname + location.search) },
+  run: (function make(success, failure) {
   return new Proxy({}, { get(_, name) {
     if (name === "withSuccessHandler") return fn => make(fn, failure);
     if (name === "withFailureHandler") return fn => make(success, fn);

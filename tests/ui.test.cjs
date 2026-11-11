@@ -50,6 +50,24 @@ const rows = page => page.locator("#shiftTable tbody tr.shift").evaluateAll(item
   items.map(row => [...row.cells].map(cell => cell.textContent.trim())));
 const money = cents => "$" + (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 });
 
+test("a calculator shift opens ready for review after hourly rates are set", async t => {
+  const { page, url } = await start(t);
+  const transfer = { version: 1, shiftDate: "2026-11-06", venue: "Ivy House", eventType: "non-wedding",
+    entries: [{ role: "Bartender", hours: 5, cashTipsCents: 5000, creditTipsCents: 2500, guaranteeCents: 0 }] };
+  await page.goto(`${url}#shift=${encodeURIComponent(JSON.stringify(transfer))}`);
+  await page.locator("#periodTitle").waitFor();
+  await page.waitForFunction(() => document.getElementById("transferStatus").textContent.includes("Save your hourly rates"));
+  assert.equal(await page.evaluate(() => location.hash), "", "shift data is removed from the URL");
+  await page.locator("#ratesForm input[name=bartender]").fill("12.50");
+  await page.locator("#ratesForm input[name=manager]").fill("15.25");
+  await page.locator("#ratesForm button").click();
+  await page.locator("#confirmTransfer").waitFor({ state: "visible" });
+  assert.match(await page.locator("#transferReview").innerText(), /Bartender: 5 hours at \$12\.50\/hour/);
+  await page.locator("#confirmTransfer").click();
+  await page.waitForFunction(() => document.getElementById("transferStatus").textContent === "Shift saved.");
+  assert.equal(await page.locator("#totalGross").textContent(), "$137.50");
+});
+
 test("owner saves rates, reviews a transfer and keeps earlier rates after a raise", async t => {
   const { page, url } = await start(t);
   await page.goto(url);
@@ -58,7 +76,7 @@ test("owner saves rates, reviews a transfer and keeps earlier rates after a rais
   await page.locator("#ratesForm input[name=manager]").fill("15.25");
   await page.locator("#ratesForm button").click();
   await page.waitForFunction(() => document.getElementById("ratesStatus").textContent === "Hourly rates saved.");
-  await page.locator("summary", { hasText: "Import a shift" }).click();
+  await page.locator("summary", { hasText: "Review a shift" }).click();
   const transfer = { version: 1, shiftDate: "2026-11-06", venue: "Ivy House", eventType: "non-wedding",
     entries: [{ role: "Bartender", hours: 5, cashTipsCents: 5000, creditTipsCents: 2500, guaranteeCents: 0 }] };
   await page.locator("#shiftTransfer").fill(JSON.stringify(transfer));
