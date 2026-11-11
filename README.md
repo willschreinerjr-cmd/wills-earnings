@@ -5,8 +5,11 @@ A private earnings tracker for use with
 The Google-account calculator runs the shared app as the accessing user. Each
 approved manager has a separate spreadsheet in their own Google Drive and
 account-specific hourly rates. The shared app owner controls the code. Managers
-must use their preassigned Google account and PIN; Google can request sign-in or
-authorization again. Additional managers must be approved by the app owner.
+must activate their preassigned Google account with their PIN once. Afterward,
+the approved Google account is recognized automatically, even on another
+device. Google can request sign-in or authorization again. Additional managers
+must be approved by the app owner. The app owner may revoke account access or
+reassign an account, which requires PIN activation again.
 
 The shared deployment has been tested with the owner's account; real
 multi-account access still needs verification. The sections below describe the

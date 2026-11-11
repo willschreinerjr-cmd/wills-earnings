@@ -20,7 +20,7 @@ test("shared account storage isolates rates and sheets, and rejects unapproved G
   assert.equal(manager.context.doGet().file, "Calculator");
   assert.match(manager.context.doGet({ parameter: { view: "earnings" } }).html, /Access denied/);
   assert.throws(() => manager.context.signInSharedManager("1111"), /Invalid manager PIN/);
-  assert.throws(() => manager.context.getEarningsData(), /session expired/);
+  assert.throws(() => manager.context.getEarningsData(), /activate this Google account/);
   will.context.signInSharedManager("1111");
   manager.context.signInSharedManager("2222");
   assert.equal(manager.context.doGet({ parameter: { view: "earnings" } }).file, "Index");
@@ -99,7 +99,49 @@ test("shared migration links only the matching owner's existing spreadsheet", ()
   assert.equal(userProperties.get(OWNER).get("WILLS_EARNINGS_SPREADSHEET_ID"), legacyId);
   assert.notEqual(userProperties.get("manager@example.test").get("WILLS_EARNINGS_SPREADSHEET_ID"), legacyId);
   will.context.signOutSharedManager();
-  assert.throws(() => will.context.getEarningsData(), /session expired/);
+  assert.throws(() => will.context.getEarningsData(), /activate this Google account/);
+});
+
+test("PIN activation persists per approved Google account and is revoked on reassignment", () => {
+  const properties = new Map([
+    ["SHARED_ACCOUNT_MODE", "true"],
+    ["APPROVED_ACCOUNTS", JSON.stringify([
+      { email: OWNER, name: "Will", pin: "1111" },
+      { email: "manager@example.test", name: "Manager", pin: "2222" }
+    ])]
+  ]);
+  const userProperties = new Map();
+  const opts = { properties, userProperties };
+  const will = ownerApp(opts);
+  const manager = ownerApp({ ...opts, activeEmail: "manager@example.test", effectiveEmail: "manager@example.test" });
+  assert.throws(() => will.context.getSharedManagerSession(), /activate this Google account/);
+  assert.throws(() => will.context.signInSharedManager("2222"), /Invalid manager PIN/);
+  assert.throws(() => will.context.getSharedManagerSession(), /activate this Google account/);
+  will.context.signInSharedManager("1111");
+  assert.equal(ownerApp(opts).context.getSharedManagerSession().managerName, "Will");
+  assert.throws(() => manager.context.getSharedManagerSession(), /activate this Google account/);
+  properties.set("APPROVED_ACCOUNTS", JSON.stringify([{ email: OWNER, name: "Another Manager", pin: "3333" }]));
+  assert.throws(() => will.context.getSharedManagerSession(), /activate this Google account/);
+  properties.set("APPROVED_ACCOUNTS", JSON.stringify([{ email: "other@example.test", name: "Will", pin: "1111" }]));
+  assert.throws(() => will.context.getSharedManagerSession(), /Access denied/);
+});
+
+test("a current legacy PIN session upgrades to persistent activation, but an expired one does not", () => {
+  const properties = new Map([
+    ["SHARED_ACCOUNT_MODE", "true"],
+    ["APPROVED_ACCOUNTS", JSON.stringify([{ email: OWNER, name: "Will", pin: "1111" }])]
+  ]);
+  const userProperties = new Map();
+  const app = ownerApp({ properties, userProperties });
+  const props = app.context.PropertiesService.getUserProperties();
+  const now = app.context.Date.now();
+  props.setProperty("MANAGER_LOGIN_EXPIRY", String(now - 1));
+  assert.throws(() => app.context.getSharedManagerSession(), /activate this Google account/);
+  props.setProperty("MANAGER_LOGIN_EXPIRY", String(now + 3600000));
+  assert.equal(app.context.getSharedManagerSession().managerName, "Will");
+  assert.equal(props.getProperty("MANAGER_LOGIN_EXPIRY"), null);
+  assert.ok(props.getProperty("MANAGER_ACCOUNT_ACTIVATION"));
+  assert.equal(ownerApp({ properties, userProperties }).context.getSharedManagerSession().managerName, "Will");
 });
 
 test("private rates and confirmed transfers preserve role wages and reject duplicates", () => {

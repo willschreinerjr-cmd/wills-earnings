@@ -11,7 +11,7 @@ const SHARED_ACCOUNT_MODE_PROPERTY = "SHARED_ACCOUNT_MODE";
 const APPROVED_ACCOUNTS_PROPERTY = "APPROVED_ACCOUNTS";
 const PRIVATE_OWNER_EMAIL_PROPERTY = "PRIVATE_OWNER_EMAIL";
 const SHARED_LOGIN_EXPIRY_PROPERTY = "MANAGER_LOGIN_EXPIRY";
-const SHARED_LOGIN_TTL_MS = 12 * 60 * 60 * 1000;
+const SHARED_ACTIVATION_PROPERTY = "MANAGER_ACCOUNT_ACTIVATION";
 
 // BEGIN SHARED EARNINGS STORAGE (keep identical in twobirds-tipout/google-apps-script.gs and wills-earnings/src/Code.gs)
 const EARNINGS_SHIFT_SHEET = "Shifts";
@@ -148,10 +148,19 @@ function normalizedEmail(user) {
 function requireOwner() {
   const active = requireApprovedAccount_();
   if (sharedAccountMode_()) {
-    const expiresAt = Number(PropertiesService.getUserProperties().getProperty(SHARED_LOGIN_EXPIRY_PROPERTY));
-    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-      throw new Error("Your manager session expired. Sign in again.");
+    const account = sharedAccount_();
+    const userProperties = PropertiesService.getUserProperties();
+    const expected = JSON.stringify({ email: active, name: account.name.trim() });
+    let activation = userProperties.getProperty(SHARED_ACTIVATION_PROPERTY);
+    if (!activation) {
+      const expiresAt = Number(userProperties.getProperty(SHARED_LOGIN_EXPIRY_PROPERTY));
+      if (Number.isFinite(expiresAt) && expiresAt > Date.now()) {
+        userProperties.setProperty(SHARED_ACTIVATION_PROPERTY, expected);
+        userProperties.deleteProperty(SHARED_LOGIN_EXPIRY_PROPERTY);
+        activation = expected;
+      }
     }
+    if (activation !== expected) throw new Error("Enter your manager PIN to activate this Google account.");
   }
   return active;
 }
@@ -193,8 +202,11 @@ function sharedAccount_() {
 function signInSharedManager(pin) {
   const account = sharedAccount_();
   if (typeof pin !== "string" || pin !== account.pin) throw new Error("Invalid manager PIN for this Google account.");
-  const expiresAt = Date.now() + SHARED_LOGIN_TTL_MS;
-  PropertiesService.getUserProperties().setProperty(SHARED_LOGIN_EXPIRY_PROPERTY, String(expiresAt));
+  const properties = PropertiesService.getUserProperties();
+  properties.setProperty(SHARED_ACTIVATION_PROPERTY, JSON.stringify({
+    email: account.email.trim().toLowerCase(), name: account.name.trim()
+  }));
+  properties.deleteProperty(SHARED_LOGIN_EXPIRY_PROPERTY);
   return sharedManagerSession_();
 }
 
@@ -204,7 +216,6 @@ function sharedManagerSession_() {
   const rates = getHourlyRates_();
   return {
     managerName: account.name.trim(),
-    expiresAt: Number(PropertiesService.getUserProperties().getProperty(SHARED_LOGIN_EXPIRY_PROPERTY)),
     hourlyRates: rates,
     earningsUrl: ScriptApp.getService().getUrl() + "?view=earnings"
   };
@@ -216,6 +227,7 @@ function getSharedManagerSession() {
 
 function signOutSharedManager() {
   sharedAccount_();
+  PropertiesService.getUserProperties().deleteProperty(SHARED_ACTIVATION_PROPERTY);
   PropertiesService.getUserProperties().deleteProperty(SHARED_LOGIN_EXPIRY_PROPERTY);
 }
 
