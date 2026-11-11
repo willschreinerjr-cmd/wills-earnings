@@ -14,6 +14,7 @@ function createDevApp({ persist = true, activeEmail = OWNER, store, now } = {}) 
     ? JSON.parse(fs.readFileSync(dataFile, "utf8"))
     : { properties: {}, spreadsheets: [] });
   const properties = new Map(Object.entries(state.properties));
+  if (!properties.has("PRIVATE_OWNER_EMAIL")) properties.set("PRIVATE_OWNER_EMAIL", OWNER);
   const spreadsheets = state.spreadsheets.map(FakeSpreadsheet.fromJSON);
   const app = loadEarningsApp({ properties, spreadsheets, activeEmail, effectiveEmail: OWNER, now });
   const save = () => {

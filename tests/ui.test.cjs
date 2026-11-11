@@ -106,6 +106,10 @@ test("the main page opens on the current pay period with shifts, details, and la
   await page.locator("#periodTitle").waitFor();
   assert.equal(await page.locator("h1").textContent(), "MY EARNINGS");
   assert.equal(await page.locator("#periodTitle").textContent(), "Pay Period: November 16 – November 29");
+  assert.equal(await page.locator("#paydaySummary").textContent(),
+    "Scheduled payday: Friday, December 4, 2026. Your deposit may arrive Thursday or on a different day.");
+  assert.equal(await page.locator("#scheduleForm").count(), 0);
+  assert.equal(await page.getByText("Change Schedule").count(), 0);
   assert.equal(await page.locator("#currentPill").isVisible(), true);
   assert.equal(await page.locator("#statusPill").count(), 0);
   assert.equal(await page.locator("#paycheckForm").count(), 0);
@@ -122,6 +126,10 @@ test("the main page opens on the current pay period with shifts, details, and la
   assert.equal(await page.locator("#totalGross").textContent(), money(period.totals.grossCents));
   assert.equal(await page.locator("#totalNet").textContent(), money(period.totals.netCents));
   assert.equal(await page.locator("#totalDeposit").textContent(), money(period.totals.netCents - period.totals.cashTipsCents));
+  await page.locator("#periodSelect").selectOption("2026-11-02");
+  assert.equal(await page.locator("#paydaySummary").textContent(),
+    "Scheduled payday: Friday, November 20, 2026. Your deposit may arrive Thursday or on a different day.");
+  await page.locator("#periodSelect").selectOption("2026-11-16");
   const sizes = await page.evaluate(() => ["totalGross", "totalDeposit"].map(id => parseFloat(getComputedStyle(document.getElementById(id)).fontSize)));
   assert.ok(sizes.every(size => size >= 28), "totals are large");
 

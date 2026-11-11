@@ -70,8 +70,16 @@ function formatDate(date, timeZone, pattern) {
   throw new Error(`Unsupported date pattern ${pattern}`);
 }
 
-function createServices({ properties = new Map(), spreadsheets = [], activeEmail = "", effectiveEmail = "", timeZone = "America/Chicago", now } = {}) {
+function createServices({ properties = new Map(), userProperties = new Map(), spreadsheets = [], activeEmail = "", effectiveEmail = "", timeZone = "America/Chicago", now } = {}) {
   let uuid = 0;
+  const normalizedUser = String(effectiveEmail).trim().toLowerCase();
+  if (!userProperties.has(normalizedUser)) userProperties.set(normalizedUser, new Map());
+  const propertyStore = store => ({
+    getProperty: key => store.has(key) ? store.get(key) : null,
+    setProperty: (key, value) => store.set(key, String(value)),
+    deleteProperty: key => store.delete(key),
+    getProperties: () => Object.fromEntries(store)
+  });
   const RealDate = Date;
   const FixedDate = now ? class extends RealDate {
     constructor(...args) { super(...(args.length ? args : [now.getTime()])); }
@@ -79,6 +87,7 @@ function createServices({ properties = new Map(), spreadsheets = [], activeEmail
   } : RealDate;
   return {
     properties,
+    userProperties,
     spreadsheets,
     globals: {
       Date: FixedDate,
@@ -88,15 +97,13 @@ function createServices({ properties = new Map(), spreadsheets = [], activeEmail
       },
       HtmlService: {
         createHtmlOutput: html => ({ html, setTitle() { return this; }, addMetaTag() { return this; } }),
-        createHtmlOutputFromFile: file => ({ file, setTitle() { return this; }, addMetaTag() { return this; } })
+        createHtmlOutputFromFile: file => ({ file, html: "<head></head>",
+          getContent() { return this.html; }, setContent(html) { this.html = html; return this; },
+          setTitle() { return this; }, addMetaTag() { return this; } })
       },
       PropertiesService: {
-        getScriptProperties: () => ({
-          getProperty: key => properties.has(key) ? properties.get(key) : null,
-          setProperty: (key, value) => properties.set(key, String(value)),
-          deleteProperty: key => properties.delete(key),
-          getProperties: () => Object.fromEntries(properties)
-        })
+        getScriptProperties: () => propertyStore(properties),
+        getUserProperties: () => propertyStore(userProperties.get(normalizedUser))
       },
       SpreadsheetApp: {
         create: name => {
@@ -116,6 +123,7 @@ function createServices({ properties = new Map(), spreadsheets = [], activeEmail
         getEffectiveUser: () => ({ getEmail: () => effectiveEmail }),
         getScriptTimeZone: () => timeZone
       },
+      ScriptApp: { getService: () => ({ getUrl: () => "https://script.google.com/macros/s/test/exec" }) },
       Utilities: {
         getUuid: () => `00000000-0000-4000-8000-${String(++uuid).padStart(12, "0")}`,
         formatDate,

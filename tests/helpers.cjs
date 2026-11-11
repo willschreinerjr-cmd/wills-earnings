@@ -9,7 +9,9 @@ function plain(value) {
 }
 
 function ownerApp(options = {}) {
-  return loadEarningsApp({ activeEmail: OWNER, effectiveEmail: OWNER, now: NOW, ...options });
+  const properties = options.properties || new Map();
+  if (!properties.has("PRIVATE_OWNER_EMAIL")) properties.set("PRIVATE_OWNER_EMAIL", OWNER);
+  return loadEarningsApp({ activeEmail: OWNER, effectiveEmail: OWNER, now: NOW, ...options, properties });
 }
 
 // Writes a shift the same way the calculator integration does, using the app's own storage code.

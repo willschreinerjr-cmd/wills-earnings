@@ -101,6 +101,7 @@
           <h2 id="periodTitle"></h2>
           <span id="currentPill" class="pill current" hidden>Current</span>
         </div>
+        <p id="paydaySummary" class="muted"></p>
         <div id="shiftTable"></div>
         <p id="shiftStatus" class="status" role="status"></p>
       </section>
@@ -144,19 +145,6 @@
         </details>
       </section>
 
-      <section class="card">
-        <details>
-          <summary>Pay schedule</summary>
-          <p class="muted" id="scheduleSummary"></p>
-          <p class="muted">If your employer changes the schedule, enter the first day of the new schedule. Shifts before that date keep their recorded pay periods.</p>
-          <form id="scheduleForm" class="form-grid">
-            <label>New schedule starts on<input name="startDate" type="date" required></label>
-            <label>Days per pay period<input name="periodDays" type="number" min="7" max="31" step="1" value="14" required></label>
-            <div class="full actions"><button type="submit">Change Schedule</button></div>
-          </form>
-          <p id="scheduleStatus" class="status" role="status"></p>
-        </details>
-      </section>
     </main>
   </div>
 
@@ -235,12 +223,13 @@ function render(){
   $("olderPeriod").disabled = index >= periods.length - 1;
   $("newerPeriod").disabled = index <= 0;
   $("periodTitle").textContent = `Pay Period: ${periodLabel(period)}`;
+  const payday = dateFrom(period.end);
+  payday.setUTCDate(payday.getUTCDate() + 5);
+  const paydayText = payday.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+  $("paydaySummary").textContent = `Scheduled payday: Friday, ${paydayText}. Your deposit may arrive Thursday or on a different day.`;
   $("currentPill").hidden = !period.isCurrent;
   renderShifts(period);
   renderTotals(period);
-  const latest = dashboard.schedules[dashboard.schedules.length - 1];
-  $("scheduleSummary").textContent =
-    `Current schedule: ${latest.periodDays}-day pay periods counted from ${longDate(latest.startDate)}, ${latest.startDate.slice(0, 4)}.`;
 }
 
 function renderShifts(period){
@@ -435,15 +424,6 @@ $("shiftTable").addEventListener("submit", event => {
   });
 });
 
-$("scheduleForm").addEventListener("submit", event => {
-  event.preventDefault();
-  const form = event.target;
-  const values = Object.fromEntries(new FormData(form));
-  if (!confirm(`Start ${values.periodDays}-day pay periods on ${values.startDate}? Shifts on or after that date will be regrouped.`)) return;
-  run("scheduleStatus", "Updating schedule…", () => api("addPaySchedule", values),
-    result => `Schedule updated. ${result.moved} shift${result.moved === 1 ? "" : "s"} regrouped.`);
-});
-
 $("ratesForm").addEventListener("submit", event => {
   event.preventDefault();
   if (!event.target.reportValidity()) return;
@@ -491,7 +471,7 @@ $("reviewTransfer").addEventListener("click", () => {
 
 $("transferReview").addEventListener("click", async event => {
   if (event.target.id !== "confirmTransfer" || !reviewedTransfer) return;
-  const transfer = reviewedTransfer;
+  const transfer = { ...reviewedTransfer, expectedHourlyRates: dashboard.hourlyRates };
   $("shiftTransfer").disabled = true;
   $("reviewTransfer").disabled = true;
   $("confirmTransfer").disabled = true;

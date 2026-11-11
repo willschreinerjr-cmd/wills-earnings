@@ -18,6 +18,7 @@ function connect() {
   const earnings = ownerApp();
   earnings.context.getEarningsData();
   const calculatorProperties = new Map([
+    ["LEGACY_PIN_AUTH_ENABLED", "true"],
     ["WILLS_EARNINGS_SPREADSHEET_ID", earnings.properties.get("WILLS_EARNINGS_SPREADSHEET_ID")],
     ["WILLS_EARNINGS_URL", "https://script.google.com/macros/s/earnings/exec"]
   ]);
@@ -86,7 +87,9 @@ test("a shift saved from TwoBirds Tipout appears in Will's Earnings with matchin
 });
 
 test("TwoBirds Tipout keeps authenticating managers when Will's Earnings is unavailable", { skip }, () => {
-  const calculator = loadScript(calculatorBackend, { properties: new Map([["WILLS_EARNINGS_SPREADSHEET_ID", "deleted-sheet"]]) });
+  const calculator = loadScript(calculatorBackend, { properties: new Map([
+    ["LEGACY_PIN_AUTH_ENABLED", "true"], ["WILLS_EARNINGS_SPREADSHEET_ID", "deleted-sheet"]
+  ]) });
   const post = payload => JSON.parse(calculator.context.doPost({ postData: { contents: JSON.stringify(payload) } }).text);
   const will = post({ action: "authManagerPin", pin: "1218" });
   assert.equal(will.ok, true);

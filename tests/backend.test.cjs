@@ -4,6 +4,104 @@ const { OWNER, plain, ownerApp, seedShift } = require("./helpers.cjs");
 
 const API = ["getEarningsData", "updateShift", "deleteShift", "addPaySchedule", "saveHourlyRates", "saveTransferredShift"];
 
+test("shared account storage isolates rates and sheets, and rejects unapproved Google users", () => {
+  const properties = new Map([
+    ["SHARED_ACCOUNT_MODE", "true"],
+    ["APPROVED_ACCOUNTS", JSON.stringify([
+      { email: "will@example.test", name: "Will", pin: "1111" },
+      { email: "manager@example.test", name: "Manager", pin: "2222" }
+    ])]
+  ]);
+  const userProperties = new Map();
+  const spreadsheets = [];
+  const will = ownerApp({ properties, userProperties, spreadsheets });
+  const manager = ownerApp({ properties, userProperties, spreadsheets,
+    activeEmail: "manager@example.test", effectiveEmail: "manager@example.test" });
+  assert.equal(manager.context.doGet().file, "Calculator");
+  assert.match(manager.context.doGet({ parameter: { view: "earnings" } }).html, /Access denied/);
+  assert.throws(() => manager.context.signInSharedManager("1111"), /Invalid manager PIN/);
+  assert.throws(() => manager.context.getEarningsData(), /session expired/);
+  will.context.signInSharedManager("1111");
+  manager.context.signInSharedManager("2222");
+  assert.equal(manager.context.doGet({ parameter: { view: "earnings" } }).file, "Index");
+  will.context.saveHourlyRates({ bartender: "15", manager: "16" });
+  manager.context.saveHourlyRates({ bartender: "12", manager: "14" });
+  const willData = plain(will.context.getEarningsData());
+  const managerData = plain(manager.context.getEarningsData());
+  assert.deepEqual(willData.hourlyRates, { bartenderCents: 1500, managerCents: 1600 });
+  assert.deepEqual(managerData.hourlyRates, { bartenderCents: 1200, managerCents: 1400 });
+  const transfer = { version: 1, shiftDate: "2026-11-06", venue: "Ivy House", eventType: "non-wedding",
+    entries: [{ role: "Bartender", hours: 2, cashTipsCents: 100, creditTipsCents: 200, guaranteeCents: 0 }],
+    expectedHourlyRates: { bartenderCents: 1200, managerCents: 1400 } };
+  manager.context.saveTransferredShift(transfer);
+  assert.equal(plain(manager.context.getEarningsData()).periods.find(p => p.start === "2026-11-02").shifts[0].wageCents, 2400);
+  assert.equal(plain(will.context.getEarningsData()).periods.some(p => p.shifts.length), false);
+  manager.context.saveHourlyRates({ bartender: "20", manager: "22" });
+  assert.equal(plain(manager.context.getEarningsData()).periods.find(p => p.start === "2026-11-02").shifts[0].wageCents, 2400);
+  assert.throws(() => manager.context.saveTransferredShift({ ...transfer, shiftDate: "2026-11-07" }), /rates changed/);
+  assert.equal(spreadsheets.length, 2);
+  assert.notEqual(userProperties.get(OWNER).get("WILLS_EARNINGS_SPREADSHEET_ID"),
+    userProperties.get("manager@example.test").get("WILLS_EARNINGS_SPREADSHEET_ID"));
+  const unauthorized = ownerApp({ properties, userProperties, spreadsheets,
+    activeEmail: "other@example.test", effectiveEmail: "other@example.test" });
+  assert.throws(() => unauthorized.context.getEarningsData(), /Access denied/);
+  assert.throws(() => manager.context.getDataSpreadsheet(OWNER), /Access denied/);
+  assert.equal(spreadsheets.length, 2);
+});
+
+test("shared accounts require a valid allowlist and matching Google identity", () => {
+  for (const raw of [null, "{}", '[""]']) {
+    const properties = new Map([["SHARED_ACCOUNT_MODE", "true"]]);
+    if (raw !== null) properties.set("APPROVED_ACCOUNTS", raw);
+    const app = ownerApp({ properties });
+    assert.throws(() => app.context.getEarningsData(), /Approved accounts/);
+    assert.equal(app.spreadsheets.length, 0);
+  }
+  const properties = new Map([
+    ["SHARED_ACCOUNT_MODE", "true"],
+    ["APPROVED_ACCOUNTS", JSON.stringify([{ email: OWNER, name: "Will", pin: "1111" }])]
+  ]);
+  const app = ownerApp({ properties, effectiveEmail: "other@example.test" });
+  assert.throws(() => app.context.getEarningsData(), /Access denied/);
+  assert.equal(app.spreadsheets.length, 0);
+});
+
+test("a missing shared-mode setting cannot grant access to arbitrary Google accounts", () => {
+  const app = ownerApp({ activeEmail: "other@example.test", effectiveEmail: "other@example.test" });
+  assert.throws(() => app.context.getEarningsData(), /Access denied/);
+  assert.equal(app.spreadsheets.length, 0);
+});
+
+test("shared migration links only the matching owner's existing spreadsheet", () => {
+  const original = ownerApp();
+  const saved = seedShift(original, { shiftDate: "2026-11-06" });
+  seedShift(original, { shiftDate: "2026-11-07" });
+  const legacyId = original.properties.get("WILLS_EARNINGS_SPREADSHEET_ID");
+  const properties = new Map([
+    ["SHARED_ACCOUNT_MODE", "true"],
+    ["APPROVED_ACCOUNTS", JSON.stringify([
+      { email: OWNER, name: "Will", pin: "1111" },
+      { email: "manager@example.test", name: "Manager", pin: "2222" }
+    ])],
+    ["LEGACY_OWNER_EMAIL", OWNER],
+    ["LEGACY_SPREADSHEET_ID", legacyId]
+  ]);
+  const userProperties = new Map();
+  const opts = { properties, userProperties, spreadsheets: original.spreadsheets };
+  const manager = ownerApp({ ...opts, activeEmail: "manager@example.test", effectiveEmail: "manager@example.test" });
+  manager.context.signInSharedManager("2222");
+  assert.equal(plain(manager.context.getEarningsData()).periods.some(p => p.shifts.length), false);
+  const will = ownerApp(opts);
+  will.context.signInSharedManager("1111");
+  const shifts = plain(will.context.getEarningsData()).periods.find(p => p.start === "2026-11-02").shifts;
+  assert.deepEqual(shifts.map(shift => shift.shiftDate), ["2026-11-06", "2026-11-07"]);
+  assert.equal(shifts[0].id, saved.id);
+  assert.equal(userProperties.get(OWNER).get("WILLS_EARNINGS_SPREADSHEET_ID"), legacyId);
+  assert.notEqual(userProperties.get("manager@example.test").get("WILLS_EARNINGS_SPREADSHEET_ID"), legacyId);
+  will.context.signOutSharedManager();
+  assert.throws(() => will.context.getEarningsData(), /session expired/);
+});
+
 test("private rates and confirmed transfers preserve role wages and reject duplicates", () => {
   const app = ownerApp();
   const transfer = { version: 1, shiftDate: "2026-11-06", venue: "Ivy House", eventType: "wedding",
@@ -150,37 +248,27 @@ test("legacy verified paycheck records do not lock shift edits or create dashboa
   assert.equal(legacyPaychecks.rows[1][2], "verified", "old verification data is left untouched");
 });
 
-test("changing the pay schedule regroups later shifts without rewriting earlier shift periods", () => {
+test("the automatic biweekly schedule cannot be changed and ignores legacy schedule rows", () => {
   const app = ownerApp();
-  const early = seedShift(app, { shiftDate: "2026-11-06" });
-  const before = seedShift(app, { shiftDate: "2026-11-19" });
-  const after = seedShift(app, { shiftDate: "2026-11-25" });
-  assert.throws(() => app.context.addPaySchedule({ startDate: "2026-11-23", periodDays: 3 }), /7 to 31/);
-  const data = plain(app.context.addPaySchedule({ startDate: "2026-11-23", periodDays: 7 }));
-  assert.equal(data.moved, 2);
-  const byId = Object.fromEntries(data.periods.flatMap(period => period.shifts.map(shift => [shift.id, [shift.payPeriodStart, shift.payPeriodEnd]])));
-  assert.deepEqual(byId[before.id], ["2026-11-16", "2026-11-22"], "an earlier shift keeps its period start, which now ends before the new schedule");
-  assert.deepEqual(byId[after.id], ["2026-11-23", "2026-11-29"]);
-  assert.deepEqual(data.periods.map(period => [period.start, period.end]).slice(0, 2),
-    [["2026-11-23", "2026-11-29"], ["2026-11-16", "2026-11-22"]], "periods never overlap");
-  assert.equal(byId[early.id][1], "2026-11-15", "earlier shift periods remain untouched");
-  assert.equal(data.schedules.length, 2);
-  assert.throws(() => app.context.addPaySchedule({ startDate: "2026-11-23", periodDays: 14 }), /must start after/);
-});
-
-test("a schedule can change inside a legacy verified pay period", () => {
-  const app = ownerApp();
-  const shift = seedShift(app, { shiftDate: "2026-11-20" });
+  seedShift(app, { shiftDate: "2026-11-06" });
+  seedShift(app, { shiftDate: "2026-11-07" });
   const spreadsheet = app.context.getDataSpreadsheet(OWNER);
-  const legacyPaychecks = spreadsheet.insertSheet("Paychecks");
-  legacyPaychecks.rows.push(
-    ["periodStart", "periodEnd", "status"],
-    ["2026-11-16", "2026-11-29", "verified"]
-  );
-  const data = plain(app.context.addPaySchedule({ startDate: "2026-11-20", periodDays: 14 }));
-  assert.equal(data.schedules.length, 2);
-  assert.equal(data.periods.flatMap(period => period.shifts).find(item => item.id === shift.id).payPeriodStart, "2026-11-20");
-  assert.equal(legacyPaychecks.rows[1][2], "verified", "old verification data is left untouched");
+  spreadsheet.getSheetByName("PaySchedule").rows.push(["2026-11-01", "7", "legacy"]);
+  const shiftsSheet = spreadsheet.getSheetByName("Shifts");
+  const startColumn = shiftsSheet.rows[0].indexOf("payPeriodStart");
+  const endColumn = shiftsSheet.rows[0].indexOf("payPeriodEnd");
+  shiftsSheet.rows[1][startColumn] = "2026-11-01";
+  shiftsSheet.rows[1][endColumn] = "2026-11-07";
+  const before = JSON.stringify(spreadsheet.toJSON());
+  assert.throws(() => app.context.addPaySchedule({ startDate: "2026-11-23", periodDays: 7 }), /automatic and cannot be changed/);
+  const data = plain(app.context.getEarningsData());
+  const period = data.periods.find(item => item.start === "2026-11-02");
+  assert.equal(period.end, "2026-11-15");
+  assert.deepEqual(period.shifts.map(shift => [shift.shiftDate, shift.payPeriodStart, shift.payPeriodEnd]),
+    [["2026-11-06", "2026-11-02", "2026-11-15"], ["2026-11-07", "2026-11-02", "2026-11-15"]]);
+  assert.equal(JSON.stringify(spreadsheet.toJSON()), before, "viewing does not rewrite legacy schedule or shifts");
+  assert.deepEqual(plain(app.context.fixedPayPeriod_("2026-11-01")), { start: "2026-10-19", end: "2026-11-01" });
+  assert.deepEqual(plain(app.context.fixedPayPeriod_("2026-11-16")), { start: "2026-11-16", end: "2026-11-29" });
 });
 
 test("money is parsed exactly from text without floating-point drift", () => {

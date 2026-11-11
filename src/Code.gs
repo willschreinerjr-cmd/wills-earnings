@@ -1,5 +1,5 @@
 // Will's Earnings: a private Apps Script web app.
-// Deploy with "Execute as: Me" and "Who has access: Only myself"; requireOwner() re-checks every call.
+// The private deployment also verifies a configured owner on every call.
 
 const DATA_SPREADSHEET_PROPERTY = "WILLS_EARNINGS_SPREADSHEET_ID";
 const DATA_SPREADSHEET_NAME = "My Earnings - Private Data";
@@ -7,6 +7,11 @@ const BUSINESS_DAY_ROLLOVER_HOUR = 3;
 const MAX_AMOUNT_CENTS = 10000000;
 const HOURLY_RATES_PROPERTY = "EARNINGS_HOURLY_RATES";
 const ESTIMATED_WITHHOLDING_RATE = 0.2074821353509878;
+const SHARED_ACCOUNT_MODE_PROPERTY = "SHARED_ACCOUNT_MODE";
+const APPROVED_ACCOUNTS_PROPERTY = "APPROVED_ACCOUNTS";
+const PRIVATE_OWNER_EMAIL_PROPERTY = "PRIVATE_OWNER_EMAIL";
+const SHARED_LOGIN_EXPIRY_PROPERTY = "MANAGER_LOGIN_EXPIRY";
+const SHARED_LOGIN_TTL_MS = 12 * 60 * 60 * 1000;
 
 // BEGIN SHARED EARNINGS STORAGE (keep identical in twobirds-tipout/google-apps-script.gs and wills-earnings/src/Code.gs)
 const EARNINGS_SHIFT_SHEET = "Shifts";
@@ -110,8 +115,19 @@ function earningsShiftRow(shift) {
 }
 // END SHARED EARNINGS STORAGE
 
-function doGet() {
+function doGet(e) {
   try {
+    if (sharedAccountMode_()) {
+      requireApprovedAccount_();
+      if (!e || !e.parameter || e.parameter.view !== "earnings") {
+        const calculator = HtmlService.createHtmlOutputFromFile("Calculator");
+        calculator.setContent(calculator.getContent().replace("<head>",
+          '<head><base href="https://willschreinerjr-cmd.github.io/twobirds-tipout/" target="_top">'));
+        return calculator
+          .setTitle("TwoBirds Tipout")
+          .addMetaTag("viewport", "width=device-width, initial-scale=1");
+      }
+    }
     requireOwner();
   } catch (err) {
     return HtmlService.createHtmlOutput("<p style=\"font-family:sans-serif\">Access denied.</p>").setTitle("Access denied");
@@ -130,16 +146,107 @@ function normalizedEmail(user) {
 }
 
 function requireOwner() {
-  // With "Execute as: Me", the effective user is the owner; the active user is whoever opened the app.
+  const active = requireApprovedAccount_();
+  if (sharedAccountMode_()) {
+    const expiresAt = Number(PropertiesService.getUserProperties().getProperty(SHARED_LOGIN_EXPIRY_PROPERTY));
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      throw new Error("Your manager session expired. Sign in again.");
+    }
+  }
+  return active;
+}
+
+function requireApprovedAccount_() {
   const active = normalizedEmail(Session.getActiveUser());
   const owner = normalizedEmail(Session.getEffectiveUser());
   if (!active || !owner || active !== owner) throw new Error("Access denied.");
+  const properties = PropertiesService.getScriptProperties();
+  if (sharedAccountMode_()) {
+    const raw = properties.getProperty(APPROVED_ACCOUNTS_PROPERTY);
+    if (!raw) throw new Error("Approved accounts are not configured.");
+    const accounts = JSON.parse(raw);
+    if (!Array.isArray(accounts) || !accounts.every(account =>
+      account && typeof account.email === "string" && account.email.trim() &&
+      typeof account.name === "string" && account.name.trim() &&
+      typeof account.pin === "string" && /^\d{4}$/.test(account.pin))) {
+      throw new Error("Approved accounts are invalid.");
+    }
+    if (!accounts.some(account => account.email.trim().toLowerCase() === active)) {
+      throw new Error("Access denied.");
+    }
+  } else {
+    const configuredOwner = String(properties.getProperty(PRIVATE_OWNER_EMAIL_PROPERTY) || "").trim().toLowerCase();
+    if (!configuredOwner || configuredOwner !== active) throw new Error("Access denied.");
+  }
   return owner;
 }
 
+function sharedAccount_() {
+  if (!sharedAccountMode_()) throw new Error("Shared manager access is not enabled.");
+  const email = requireApprovedAccount_();
+  const accounts = JSON.parse(PropertiesService.getScriptProperties().getProperty(APPROVED_ACCOUNTS_PROPERTY));
+  const matches = accounts.filter(account => account.email.trim().toLowerCase() === email);
+  if (matches.length !== 1) throw new Error("Manager account configuration is invalid.");
+  return matches[0];
+}
+
+function signInSharedManager(pin) {
+  const account = sharedAccount_();
+  if (typeof pin !== "string" || pin !== account.pin) throw new Error("Invalid manager PIN for this Google account.");
+  const expiresAt = Date.now() + SHARED_LOGIN_TTL_MS;
+  PropertiesService.getUserProperties().setProperty(SHARED_LOGIN_EXPIRY_PROPERTY, String(expiresAt));
+  return sharedManagerSession_();
+}
+
+function sharedManagerSession_() {
+  const account = sharedAccount_();
+  requireOwner();
+  const rates = getHourlyRates_();
+  return {
+    managerName: account.name.trim(),
+    expiresAt: Number(PropertiesService.getUserProperties().getProperty(SHARED_LOGIN_EXPIRY_PROPERTY)),
+    hourlyRates: rates,
+    earningsUrl: ScriptApp.getService().getUrl() + "?view=earnings"
+  };
+}
+
+function getSharedManagerSession() {
+  return sharedManagerSession_();
+}
+
+function signOutSharedManager() {
+  sharedAccount_();
+  PropertiesService.getUserProperties().deleteProperty(SHARED_LOGIN_EXPIRY_PROPERTY);
+}
+
+function sharedAccountMode_() {
+  return PropertiesService.getScriptProperties().getProperty(SHARED_ACCOUNT_MODE_PROPERTY) === "true";
+}
+
+function earningsProperties_() {
+  return sharedAccountMode_() ? PropertiesService.getUserProperties() : PropertiesService.getScriptProperties();
+}
+
 function getDataSpreadsheet(ownerId) {
-  const props = PropertiesService.getScriptProperties();
-  const existingId = props.getProperty(DATA_SPREADSHEET_PROPERTY);
+  if (ownerId !== requireOwner()) throw new Error("Access denied.");
+  const props = earningsProperties_();
+  let existingId = props.getProperty(DATA_SPREADSHEET_PROPERTY);
+  if (!existingId && sharedAccountMode_()) {
+    const config = PropertiesService.getScriptProperties();
+    const legacyOwner = String(config.getProperty("LEGACY_OWNER_EMAIL") || "").trim().toLowerCase();
+    if (legacyOwner === ownerId) {
+      existingId = config.getProperty("LEGACY_SPREADSHEET_ID");
+      if (!existingId) throw new Error("Existing earnings spreadsheet is not configured.");
+      const oldSheet = SpreadsheetApp.openById(existingId);
+      const ownerSheet = oldSheet.getSheetByName(EARNINGS_OWNER_SHEET);
+      if (!ownerSheet) throw new Error("Existing earnings spreadsheet has no owner record.");
+      const owners = earningsReadRows(ownerSheet, EARNINGS_OWNER_COLUMNS).filter(record => record.ownerId);
+      if (owners.length !== 1 || owners[0].ownerId !== ownerId) {
+        throw new Error("Existing earnings spreadsheet owner does not match.");
+      }
+      props.setProperty(DATA_SPREADSHEET_PROPERTY, existingId);
+    }
+  }
   const spreadsheet = existingId ? SpreadsheetApp.openById(existingId) : SpreadsheetApp.create(DATA_SPREADSHEET_NAME);
   const ownerSheet = earningsSheet(spreadsheet, EARNINGS_OWNER_SHEET, EARNINGS_OWNER_COLUMNS);
   const owners = earningsReadRows(ownerSheet, EARNINGS_OWNER_COLUMNS).filter(record => record.ownerId);
@@ -209,18 +316,26 @@ function summarizeShifts(shifts) {
   return totals;
 }
 
+function fixedPayPeriod_(shiftDate) {
+  return earningsPayPeriod([EARNINGS_DEFAULT_SCHEDULE], shiftDate);
+}
+
 function buildDashboard(spreadsheet, today) {
-  const schedules = earningsSchedules(spreadsheet);
   const shifts = earningsReadRows(earningsSheet(spreadsheet, EARNINGS_SHIFT_SHEET, EARNINGS_SHIFT_COLUMNS),
     EARNINGS_SHIFT_COLUMNS).filter(record => record.id).map(earningsShiftFromRecord);
   const periods = new Map();
   const addPeriod = start => {
-    if (!periods.has(start)) periods.set(start, { start, end: earningsPayPeriod(schedules, start).end, shifts: [] });
+    if (!periods.has(start)) periods.set(start, { start, end: fixedPayPeriod_(start).end, shifts: [] });
     return periods.get(start);
   };
-  const current = earningsPayPeriod(schedules, today);
+  const current = fixedPayPeriod_(today);
   addPeriod(current.start);
-  shifts.forEach(shift => addPeriod(shift.payPeriodStart).shifts.push(shift));
+  shifts.forEach(shift => {
+    const period = fixedPayPeriod_(shift.shiftDate);
+    shift.payPeriodStart = period.start;
+    shift.payPeriodEnd = period.end;
+    addPeriod(period.start).shifts.push(shift);
+  });
 
   const list = [...periods.values()].sort((a, b) => b.start.localeCompare(a.start)).map(period => {
     period.shifts.sort((a, b) => a.shiftDate.localeCompare(b.shiftDate) || a.createdAt.localeCompare(b.createdAt));
@@ -228,7 +343,7 @@ function buildDashboard(spreadsheet, today) {
     const totals = summarizeShifts(period.shifts);
     return { ...period, totals, isCurrent: period.start === current.start };
   });
-  return { today, currentPeriodStart: current.start, periods: list, schedules, hourlyRates: getHourlyRates_() };
+  return { today, currentPeriodStart: current.start, periods: list, hourlyRates: getHourlyRates_() };
 }
 
 function getEarningsData() {
@@ -236,7 +351,7 @@ function getEarningsData() {
 }
 
 function getHourlyRates_() {
-  const raw = PropertiesService.getScriptProperties().getProperty(HOURLY_RATES_PROPERTY);
+  const raw = earningsProperties_().getProperty(HOURLY_RATES_PROPERTY);
   if (!raw) return null;
   const rates = JSON.parse(raw);
   if (!rates || !Number.isSafeInteger(rates.bartenderCents) || rates.bartenderCents < 0 ||
@@ -254,7 +369,7 @@ function saveHourlyRates(input) {
       bartenderCents: parseCents(data.bartender, "Bartender hourly rate"),
       managerCents: parseCents(data.manager, "Shift manager hourly rate")
     };
-    PropertiesService.getScriptProperties().setProperty(HOURLY_RATES_PROPERTY, JSON.stringify(rates));
+    earningsProperties_().setProperty(HOURLY_RATES_PROPERTY, JSON.stringify(rates));
     return rates;
   });
 }
@@ -264,6 +379,11 @@ function saveTransferredShift(input) {
     const rates = getHourlyRates_();
     if (!rates) throw new Error("Save your hourly rates before importing a shift.");
     const data = input || {};
+    if (sharedAccountMode_() && (!data.expectedHourlyRates ||
+        data.expectedHourlyRates.bartenderCents !== rates.bartenderCents ||
+        data.expectedHourlyRates.managerCents !== rates.managerCents)) {
+      throw new Error("Your hourly rates changed. Refresh the calculator and review your earnings before saving.");
+    }
     if (data.version !== 1 || earningsDayNumber(data.shiftDate) === null ||
         typeof data.venue !== "string" || !data.venue.trim() || data.venue.length > 60 ||
         !["wedding", "non-wedding"].includes(data.eventType) ||
@@ -297,7 +417,7 @@ function saveTransferredShift(input) {
     if (existing.some(record => record.idempotencyKey.startsWith(key + "-"))) {
       throw new Error("This shift transfer is already saved. Edit the existing shift instead.");
     }
-    const period = earningsPayPeriod(earningsSchedules(spreadsheet), data.shiftDate);
+    const period = fixedPayPeriod_(data.shiftDate);
     const now = new Date().toISOString();
     const rows = entries.map((entry, index) => {
       const hourlyWageCents = entry.role === "Bartender" ? rates.bartenderCents : rates.managerCents;
@@ -333,7 +453,7 @@ function updateShift(id, input) {
     const eventType = data.eventType === "wedding" ? "wedding" : "non-wedding";
     const hours = Number(data.hours);
     if (!Number.isFinite(hours) || hours <= 0 || hours > 24) throw new Error("Hours must be greater than 0 and no more than 24.");
-    const period = earningsPayPeriod(earningsSchedules(spreadsheet), shiftDate);
+    const period = fixedPayPeriod_(shiftDate);
     const cashTipsCents = parseCents(data.cashTips, "Cash tips");
     const creditTipsCents = parseCents(data.creditTips, "Credit tips");
     const amounts = computeShiftAmounts({
@@ -362,32 +482,6 @@ function deleteShift(id) {
 }
 
 function addPaySchedule(input) {
-  return withOwnerData(spreadsheet => {
-    const data = input || {};
-    const startDate = String(data.startDate || "").trim();
-    const periodDays = Number(data.periodDays);
-    if (earningsDayNumber(startDate) === null) throw new Error("Enter the first day of a pay period.");
-    if (!Number.isInteger(periodDays) || periodDays < 7 || periodDays > 31) throw new Error("Pay periods must be 7 to 31 days long.");
-    const schedules = earningsSchedules(spreadsheet);
-    if (startDate <= schedules[schedules.length - 1].startDate) {
-      throw new Error("A new schedule must start after the current schedule's start date.");
-    }
-    const scheduleSheet = earningsSheet(spreadsheet, EARNINGS_SCHEDULE_SHEET, EARNINGS_SCHEDULE_COLUMNS);
-    earningsWriteRow(scheduleSheet, scheduleSheet.getLastRow() + 1, [startDate, periodDays, new Date().toISOString()]);
-    const updatedSchedules = earningsSchedules(spreadsheet);
-    // Shifts whose recorded period reaches the new start date are regrouped; earlier periods are untouched.
-    const sheet = earningsSheet(spreadsheet, EARNINGS_SHIFT_SHEET, EARNINGS_SHIFT_COLUMNS);
-    let moved = 0;
-    earningsReadRows(sheet, EARNINGS_SHIFT_COLUMNS).filter(record => record.id).forEach(record => {
-      if (record.shiftDate < startDate && record.payPeriodEnd < startDate) return;
-      const shift = earningsShiftFromRecord(record);
-      const period = earningsPayPeriod(updatedSchedules, shift.shiftDate);
-      if (period.start === shift.payPeriodStart && period.end === shift.payPeriodEnd) return;
-      earningsWriteRow(sheet, shift.row, earningsShiftRow({
-        ...shift, payPeriodStart: period.start, payPeriodEnd: period.end, updatedAt: new Date().toISOString()
-      }));
-      moved++;
-    });
-    return { ...buildDashboard(spreadsheet, todayBusinessDate()), moved };
-  });
+  requireOwner();
+  throw new Error("The pay schedule is automatic and cannot be changed.");
 }

@@ -2,9 +2,16 @@
 
 A private earnings tracker for use with
 [TwoBirds Tipout](https://github.com/willschreinerjr-cmd/twobirds-tipout).
-Each manager creates and owns their own Google Apps Script project and private
-spreadsheet; the calculator operator does not need access to those projects.
-Will's existing direct-save connection is unchanged.
+The Google-account calculator runs the shared app as the accessing user. Each
+approved manager has a separate spreadsheet in their own Google Drive and
+account-specific hourly rates. The shared app owner controls the code. Managers
+must use their preassigned Google account and PIN; Google can request sign-in or
+authorization again. Additional managers must be approved by the app owner.
+
+The shared deployment has been tested with the owner's account; real
+multi-account access still needs verification. The sections below describe the
+older independently deployed tracker, which remains available for existing
+deployments but is not required for the Google-account calculator.
 
 ## Setting up your own private tracker
 
@@ -18,7 +25,8 @@ project, share a spreadsheet, or reuse his spreadsheet ID.
    [`src/Index.html`](src/Index.html).
 3. In Project Settings, enable **Show "appsscript.json" manifest file in editor**.
    Replace the manifest with [`src/appsscript.json`](src/appsscript.json).
-   Save the project.
+   Add a Script Property named `PRIVATE_OWNER_EMAIL` containing your own Google
+   account email, then save the project.
 4. Choose **Deploy → New deployment → Web app**. Choose **Execute as: Me**
    and **Who has access: Only myself**. Never select broader access. Authorize
    the requested spreadsheet and identity permissions as your own account.
@@ -35,6 +43,9 @@ or the URL. Keep your Google account secure and do not share access to the
 project or spreadsheet. The setup may require Google to show an authorization
 warning for an individually created app; review the requested permissions
 before approving. No one can create or authorize this project on your behalf.
+
+The shared-account mode links a configured legacy owner's existing spreadsheet
+after checking the sheet's owner, without copying or deleting existing shifts.
 
 ## Saving a shift
 
@@ -78,21 +89,27 @@ or in browser history or synchronization, so use a trusted device.
   an estimate only; the app does not collect paycheck details or verify pay.
   Saved values are kept as recorded; edits reuse the shift's original wage and
   withholding rate.
-- **Pay periods:** 14 days, Monday through Sunday, matching the payroll stubs: Oct 19–Nov 1 (paid Fri Nov 6), Nov 2–15 (paid Fri Nov 20), …
-  Each shift stores its pay period when saved. A schedule change (under **Pay
-  schedule**) applies only from its start date forward. Shift edits and deletes
-  remain available regardless of pay period.
+- **Pay periods:** Automatically calculated in 14-day Monday–Sunday periods,
+  based on the payroll stubs: Oct 19–Nov 1 (scheduled Fri Nov 6), Nov 2–15
+  (scheduled Fri Nov 20), and so on. Deposits may arrive Thursday or another
+  day; the displayed Friday is the regular scheduled date, not a guarantee.
+  Existing shifts are grouped by their dates without rewriting their stored
+  amounts or legacy schedule data. The schedule cannot be adjusted in the app.
+  Shift edits and deletes remain available regardless of pay period.
 
 The storage code between `BEGIN/END SHARED EARNINGS STORAGE` is duplicated in
 TwoBirds Tipout's `google-apps-script.gs`; the integration tests require both
 copies to stay identical.
 
-## Existing Will-only direct-save connection
+## Retired Will-only direct-save connection
 
-To maintain Will's existing direct-save deployment (not other managers' projects):
+The PIN-only direct-save connection is retired and must not be re-enabled in
+production. The following is retained solely for local compatibility testing:
 
 1. Create an Apps Script project and copy in `src/Code.gs`, `src/Index.html`, and
    `src/appsscript.json` (enable "Show appsscript.json" in Project Settings).
+   Set the `PRIVATE_OWNER_EMAIL` Script Property to the owner's Google account;
+   the updated code denies access when it is missing.
 2. **Deploy → New deployment → Web app** with *Execute as: Me* and *Who has
    access: Only myself*. Approve the authorization prompt.
    For later updates, edit the deployment and select **New version** before
