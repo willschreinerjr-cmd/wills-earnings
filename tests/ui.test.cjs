@@ -57,6 +57,7 @@ test("a calculator shift opens ready for review after hourly rates are set", asy
   await page.goto(`${url}#shift=${encodeURIComponent(JSON.stringify(transfer))}`);
   await page.locator("#periodTitle").waitFor();
   await page.waitForFunction(() => document.getElementById("transferStatus").textContent.includes("Save your hourly rates"));
+  assert.equal(await page.locator("#manualTransfer").isVisible(), false);
   assert.equal(await page.evaluate(() => location.hash), "", "shift data is removed from the URL");
   await page.locator("#ratesForm input[name=bartender]").fill("12.50");
   await page.locator("#ratesForm input[name=manager]").fill("15.25");

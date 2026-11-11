@@ -134,9 +134,11 @@
       <section class="card">
         <details id="importDetails">
           <summary>Review a shift from the calculator</summary>
-          <p class="muted">Paste your transfer from TwoBirds Tipout, review it, and confirm. Your rates stay in your private tracker. Multiple role entries are saved separately.</p>
-          <label>Shift transfer<textarea id="shiftTransfer" rows="4"></textarea></label>
-          <div class="actions"><button id="reviewTransfer" type="button">Review Shift</button></div>
+          <p class="muted">Review your shift before saving. Your rates stay in your private tracker. Multiple role entries are saved separately.</p>
+          <div id="manualTransfer">
+            <label>Shift transfer<textarea id="shiftTransfer" rows="4"></textarea></label>
+            <div class="actions"><button id="reviewTransfer" type="button">Review Shift</button></div>
+          </div>
           <div id="transferReview" hidden></div>
           <p id="transferStatus" class="status" role="status"></p>
         </details>
@@ -356,6 +358,7 @@ async function load(){
           $("shiftTransfer").value = decodeURIComponent(hash.slice(6));
           $("importDetails").open = true;
           $("reviewTransfer").click();
+          $("manualTransfer").hidden = true;
         } catch (error) {
           $("importDetails").open = true;
           setStatus("transferStatus", "Could not read the shift. Return to the calculator and try again.", "error");
@@ -499,6 +502,7 @@ $("transferReview").addEventListener("click", async event => {
       reviewedTransfer = null;
       $("shiftTransfer").value = "";
       $("transferReview").hidden = true;
+      $("manualTransfer").hidden = false;
       return "Shift saved.";
     });
   } finally {
