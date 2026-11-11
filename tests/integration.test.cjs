@@ -72,16 +72,17 @@ test("a shift saved from TwoBirds Tipout appears in Will's Earnings with matchin
     hours: "8.5", cashTips: "170.00", creditTips: "0", guarantee: "0"
   }));
   assert.equal(edited.periods[0].shifts[1].creditTipsCents, 0);
-  earnings.context.savePaycheck({ periodStart: "2026-11-16", status: "verified" });
-  const locked = post({ action: "saveEarningsShift", managerName: will.managerName, authToken: will.authToken,
-    idempotencyKey: "integration-key-000003", event: event() });
-  assert.match(locked.error, /Verified/);
+  const legacyPaychecks = earnings.spreadsheets[0].insertSheet("Paychecks");
+  legacyPaychecks.rows.push(["periodStart", "periodEnd", "status"], ["2026-11-16", "2026-11-29", "verified"]);
+  const savedAfterLegacyVerification = post({ action: "saveEarningsShift", managerName: will.managerName, authToken: will.authToken,
+    idempotencyKey: "integration-key-000003", event: event({ shiftDate: "2026-11-22" }) });
+  assert.equal(savedAfterLegacyVerification.ok, true, savedAfterLegacyVerification.error);
 
   const jake = post({ action: "authManagerPin", pin: "2334" });
   const denied = post({ action: "saveEarningsShift", managerName: jake.managerName, authToken: jake.authToken,
     idempotencyKey: "integration-key-000004", event: event() });
   assert.match(denied.error, /Unsupported action/);
-  assert.equal(plain(earnings.context.getEarningsData()).periods[0].shifts.length, 2);
+  assert.equal(plain(earnings.context.getEarningsData()).periods[0].shifts.length, 3);
 });
 
 test("TwoBirds Tipout keeps authenticating managers when Will's Earnings is unavailable", { skip }, () => {

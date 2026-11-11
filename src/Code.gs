@@ -2,15 +2,15 @@
 // Deploy with "Execute as: Me" and "Who has access: Only myself"; requireOwner() re-checks every call.
 
 const DATA_SPREADSHEET_PROPERTY = "WILLS_EARNINGS_SPREADSHEET_ID";
-const DATA_SPREADSHEET_NAME = "Will's Earnings - Private Data";
+const DATA_SPREADSHEET_NAME = "My Earnings - Private Data";
 const BUSINESS_DAY_ROLLOVER_HOUR = 3;
-const PAYCHECK_STATUSES = ["awaiting", "verified", "needs_review"];
 const MAX_AMOUNT_CENTS = 10000000;
+const HOURLY_RATES_PROPERTY = "EARNINGS_HOURLY_RATES";
+const ESTIMATED_WITHHOLDING_RATE = 0.2074821353509878;
 
 // BEGIN SHARED EARNINGS STORAGE (keep identical in twobirds-tipout/google-apps-script.gs and wills-earnings/src/Code.gs)
 const EARNINGS_SHIFT_SHEET = "Shifts";
 const EARNINGS_SCHEDULE_SHEET = "PaySchedule";
-const EARNINGS_PAYCHECK_SHEET = "Paychecks";
 const EARNINGS_OWNER_SHEET = "Owner";
 const EARNINGS_SHIFT_COLUMNS = [
   "id", "idempotencyKey", "shiftDate", "venue", "eventType", "role", "hours",
@@ -19,10 +19,6 @@ const EARNINGS_SHIFT_COLUMNS = [
   "withholdingRate", "payPeriodStart", "payPeriodEnd", "source", "createdAt", "updatedAt"
 ];
 const EARNINGS_SCHEDULE_COLUMNS = ["startDate", "periodDays", "createdAt"];
-const EARNINGS_PAYCHECK_COLUMNS = [
-  "periodStart", "periodEnd", "status", "actualGrossCents", "actualTaxesCents",
-  "actualDepositCents", "adjustmentsCents", "notes", "updatedAt"
-];
 const EARNINGS_OWNER_COLUMNS = ["ownerId", "createdAt"];
 const EARNINGS_DEFAULT_SCHEDULE = { startDate: "2026-11-02", periodDays: 14 };
 const EARNINGS_INTEGER_FIELDS = [
@@ -99,16 +95,6 @@ function earningsPayPeriod(schedules, isoDate) {
   return { start: earningsDayToIso(start), end: earningsDayToIso(end) };
 }
 
-function earningsPaychecks(spreadsheet) {
-  const sheet = earningsSheet(spreadsheet, EARNINGS_PAYCHECK_SHEET, EARNINGS_PAYCHECK_COLUMNS);
-  return earningsReadRows(sheet, EARNINGS_PAYCHECK_COLUMNS).filter(record => record.periodStart);
-}
-
-function earningsIsVerifiedPeriod(spreadsheet, periodStart) {
-  return earningsPaychecks(spreadsheet).some(record =>
-    record.periodStart === periodStart && record.status === "verified");
-}
-
 function earningsShiftFromRecord(record) {
   const shift = {};
   EARNINGS_SHIFT_COLUMNS.forEach(column => { shift[column] = record[column]; });
@@ -131,7 +117,7 @@ function doGet() {
     return HtmlService.createHtmlOutput("<p style=\"font-family:sans-serif\">Access denied.</p>").setTitle("Access denied");
   }
   return HtmlService.createHtmlOutputFromFile("Index")
-    .setTitle("Will's Earnings")
+    .setTitle("My Earnings")
     .addMetaTag("viewport", "width=device-width, initial-scale=1");
 }
 
@@ -165,7 +151,6 @@ function getDataSpreadsheet(ownerId) {
   if (!existingId) {
     earningsSheet(spreadsheet, EARNINGS_SHIFT_SHEET, EARNINGS_SHIFT_COLUMNS);
     earningsSchedules(spreadsheet);
-    earningsPaychecks(spreadsheet);
     const unused = spreadsheet.getSheetByName("Sheet1");
     if (unused && spreadsheet.getSheets().length > 1) spreadsheet.deleteSheet(unused);
     props.setProperty(DATA_SPREADSHEET_PROPERTY, spreadsheet.getId());
@@ -192,20 +177,13 @@ function todayBusinessDate(now) {
   return Utilities.formatDate(businessTime, timeZone, "yyyy-MM-dd");
 }
 
-function parseCents(value, label, options) {
-  const allowNegative = Boolean(options && options.allowNegative);
+function parseCents(value, label) {
   const text = String(value === null || value === undefined ? "" : value).replace(/[$,\s]/g, "");
-  const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(text);
-  if (!match || (match[1] && !allowNegative)) {
-    throw new Error(`${label} must be ${allowNegative ? "an" : "a nonnegative"} amount with up to two decimal places.`);
-  }
-  const cents = Number(match[2]) * 100 + Number((match[3] || "0").padEnd(2, "0"));
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(text);
+  if (!match) throw new Error(`${label} must be a nonnegative amount with up to two decimal places.`);
+  const cents = Number(match[1]) * 100 + Number((match[2] || "0").padEnd(2, "0"));
   if (cents > MAX_AMOUNT_CENTS) throw new Error(`${label} is too large.`);
-  return match[1] ? -cents : cents;
-}
-
-function parseOptionalCents(value, label, options) {
-  return String(value === null || value === undefined ? "" : value).trim() === "" ? null : parseCents(value, label, options);
+  return cents;
 }
 
 function computeShiftAmounts(input) {
@@ -231,23 +209,10 @@ function summarizeShifts(shifts) {
   return totals;
 }
 
-function toPaycheck(record) {
-  const number = value => value === "" || value === undefined ? null : Number(value);
-  return {
-    status: record && PAYCHECK_STATUSES.includes(record.status) ? record.status : "awaiting",
-    actualGrossCents: record ? number(record.actualGrossCents) : null,
-    actualTaxesCents: record ? number(record.actualTaxesCents) : null,
-    actualDepositCents: record ? number(record.actualDepositCents) : null,
-    adjustmentsCents: record ? number(record.adjustmentsCents) : null,
-    notes: record ? record.notes : ""
-  };
-}
-
 function buildDashboard(spreadsheet, today) {
   const schedules = earningsSchedules(spreadsheet);
   const shifts = earningsReadRows(earningsSheet(spreadsheet, EARNINGS_SHIFT_SHEET, EARNINGS_SHIFT_COLUMNS),
     EARNINGS_SHIFT_COLUMNS).filter(record => record.id).map(earningsShiftFromRecord);
-  const paychecks = earningsPaychecks(spreadsheet);
   const periods = new Map();
   const addPeriod = start => {
     if (!periods.has(start)) periods.set(start, { start, end: earningsPayPeriod(schedules, start).end, shifts: [] });
@@ -256,24 +221,98 @@ function buildDashboard(spreadsheet, today) {
   const current = earningsPayPeriod(schedules, today);
   addPeriod(current.start);
   shifts.forEach(shift => addPeriod(shift.payPeriodStart).shifts.push(shift));
-  paychecks.forEach(record => addPeriod(record.periodStart));
 
   const list = [...periods.values()].sort((a, b) => b.start.localeCompare(a.start)).map(period => {
     period.shifts.sort((a, b) => a.shiftDate.localeCompare(b.shiftDate) || a.createdAt.localeCompare(b.createdAt));
     period.shifts.forEach(shift => { delete shift.row; delete shift.idempotencyKey; });
     const totals = summarizeShifts(period.shifts);
-    const paycheck = toPaycheck(paychecks.find(record => record.periodStart === period.start));
-    paycheck.depositDifferenceCents = paycheck.actualDepositCents === null
-      ? null : paycheck.actualDepositCents - totals.depositCents;
-    paycheck.grossDifferenceCents = paycheck.actualGrossCents === null
-      ? null : paycheck.actualGrossCents - totals.grossCents;
-    return { ...period, totals, paycheck, isCurrent: period.start === current.start };
+    return { ...period, totals, isCurrent: period.start === current.start };
   });
-  return { today, currentPeriodStart: current.start, periods: list, schedules };
+  return { today, currentPeriodStart: current.start, periods: list, schedules, hourlyRates: getHourlyRates_() };
 }
 
 function getEarningsData() {
   return withOwnerData(spreadsheet => buildDashboard(spreadsheet, todayBusinessDate()));
+}
+
+function getHourlyRates_() {
+  const raw = PropertiesService.getScriptProperties().getProperty(HOURLY_RATES_PROPERTY);
+  if (!raw) return null;
+  const rates = JSON.parse(raw);
+  if (!rates || !Number.isSafeInteger(rates.bartenderCents) || rates.bartenderCents < 0 ||
+      !Number.isSafeInteger(rates.managerCents) || rates.managerCents < 0 ||
+      rates.bartenderCents > MAX_AMOUNT_CENTS || rates.managerCents > MAX_AMOUNT_CENTS) {
+    throw new Error("Saved hourly rates are invalid. Please update them.");
+  }
+  return rates;
+}
+
+function saveHourlyRates(input) {
+  return withOwnerData(() => {
+    const data = input || {};
+    const rates = {
+      bartenderCents: parseCents(data.bartender, "Bartender hourly rate"),
+      managerCents: parseCents(data.manager, "Shift manager hourly rate")
+    };
+    PropertiesService.getScriptProperties().setProperty(HOURLY_RATES_PROPERTY, JSON.stringify(rates));
+    return rates;
+  });
+}
+
+function saveTransferredShift(input) {
+  return withOwnerData(spreadsheet => {
+    const rates = getHourlyRates_();
+    if (!rates) throw new Error("Save your hourly rates before importing a shift.");
+    const data = input || {};
+    if (data.version !== 1 || earningsDayNumber(data.shiftDate) === null ||
+        typeof data.venue !== "string" || !data.venue.trim() || data.venue.length > 60 ||
+        !["wedding", "non-wedding"].includes(data.eventType) ||
+        !Array.isArray(data.entries) || !data.entries.length || data.entries.length > 60) {
+      throw new Error("Invalid shift transfer. Copy it again from the calculator.");
+    }
+    let totalHours = 0;
+    const entries = data.entries.map(entry => {
+      if (!entry || !["Bartender", "Shift Manager"].includes(entry.role) ||
+          typeof entry.hours !== "number" || !Number.isFinite(entry.hours) ||
+          entry.hours <= 0 || entry.hours > 24) throw new Error("Invalid role or hours in shift transfer.");
+      totalHours += entry.hours;
+      const amounts = ["cashTipsCents", "creditTipsCents", "guaranteeCents"].map(field => {
+        const value = entry[field];
+        if (!Number.isSafeInteger(value) || value < 0 || value > MAX_AMOUNT_CENTS) {
+          throw new Error("Invalid tip amount in shift transfer.");
+        }
+        return value;
+      });
+      if (data.eventType !== "wedding" && amounts[2] !== 0) throw new Error("A non-wedding cannot include a wedding guarantee.");
+      return { role: entry.role, hours: entry.hours, cashTipsCents: amounts[0],
+        creditTipsCents: amounts[1], guaranteeCents: amounts[2] };
+    });
+    if (totalHours > 24) throw new Error("Total shift hours cannot exceed 24.");
+    const canonical = JSON.stringify({ version: 1, shiftDate: data.shiftDate, venue: data.venue.trim(),
+      eventType: data.eventType, entries });
+    const key = "transfer-" + Utilities.base64EncodeWebSafe(
+      Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, canonical));
+    const sheet = earningsSheet(spreadsheet, EARNINGS_SHIFT_SHEET, EARNINGS_SHIFT_COLUMNS);
+    const existing = earningsReadRows(sheet, EARNINGS_SHIFT_COLUMNS);
+    if (existing.some(record => record.idempotencyKey.startsWith(key + "-"))) {
+      throw new Error("This shift transfer is already saved. Edit the existing shift instead.");
+    }
+    const period = earningsPayPeriod(earningsSchedules(spreadsheet), data.shiftDate);
+    const now = new Date().toISOString();
+    const rows = entries.map((entry, index) => {
+      const hourlyWageCents = entry.role === "Bartender" ? rates.bartenderCents : rates.managerCents;
+      const amounts = computeShiftAmounts({ ...entry, hourlyWageCents,
+        eventType: data.eventType, withholdingRate: ESTIMATED_WITHHOLDING_RATE });
+      return earningsShiftRow({ ...entry, ...amounts, id: Utilities.getUuid(), idempotencyKey: `${key}-${index}`,
+        shiftDate: data.shiftDate, venue: data.venue.trim(), eventType: data.eventType,
+        hourlyWageCents, withholdingRate: ESTIMATED_WITHHOLDING_RATE,
+        payPeriodStart: period.start, payPeriodEnd: period.end, source: "Calculator transfer",
+        createdAt: now, updatedAt: now });
+    });
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, EARNINGS_SHIFT_COLUMNS.length)
+      .setNumberFormat("@").setValues(rows.map(row => row.map(value => String(value))));
+    return buildDashboard(spreadsheet, todayBusinessDate());
+  });
 }
 
 function findShift(spreadsheet, id) {
@@ -283,16 +322,9 @@ function findShift(spreadsheet, id) {
   return { sheet, shift: earningsShiftFromRecord(record) };
 }
 
-function requireUnlockedPeriod(spreadsheet, periodStart) {
-  if (earningsIsVerifiedPeriod(spreadsheet, periodStart)) {
-    throw new Error("That pay period is marked Verified. Change its paycheck status before changing its shifts.");
-  }
-}
-
 function updateShift(id, input) {
   return withOwnerData(spreadsheet => {
     const { sheet, shift } = findShift(spreadsheet, id);
-    requireUnlockedPeriod(spreadsheet, shift.payPeriodStart);
     const data = input || {};
     const shiftDate = String(data.shiftDate || "").trim();
     if (earningsDayNumber(shiftDate) === null) throw new Error("Enter a valid date.");
@@ -302,7 +334,6 @@ function updateShift(id, input) {
     const hours = Number(data.hours);
     if (!Number.isFinite(hours) || hours <= 0 || hours > 24) throw new Error("Hours must be greater than 0 and no more than 24.");
     const period = earningsPayPeriod(earningsSchedules(spreadsheet), shiftDate);
-    requireUnlockedPeriod(spreadsheet, period.start);
     const cashTipsCents = parseCents(data.cashTips, "Cash tips");
     const creditTipsCents = parseCents(data.creditTips, "Credit tips");
     const amounts = computeShiftAmounts({
@@ -325,35 +356,7 @@ function updateShift(id, input) {
 function deleteShift(id) {
   return withOwnerData(spreadsheet => {
     const { sheet, shift } = findShift(spreadsheet, id);
-    requireUnlockedPeriod(spreadsheet, shift.payPeriodStart);
     sheet.deleteRow(shift.row);
-    return buildDashboard(spreadsheet, todayBusinessDate());
-  });
-}
-
-function savePaycheck(input) {
-  return withOwnerData(spreadsheet => {
-    const data = input || {};
-    const periodStart = String(data.periodStart || "");
-    const schedules = earningsSchedules(spreadsheet);
-    if (earningsDayNumber(periodStart) === null || earningsPayPeriod(schedules, periodStart).start !== periodStart) {
-      throw new Error("Choose a valid pay period.");
-    }
-    const status = PAYCHECK_STATUSES.includes(data.status) ? data.status : "awaiting";
-    const values = [
-      periodStart,
-      earningsPayPeriod(schedules, periodStart).end,
-      status,
-      parseOptionalCents(data.actualGross, "Actual gross pay"),
-      parseOptionalCents(data.actualTaxes, "Actual taxes withheld"),
-      parseOptionalCents(data.actualDeposit, "Actual paycheck deposit"),
-      parseOptionalCents(data.adjustments, "Other deductions or adjustments", { allowNegative: true }),
-      String(data.notes || "").trim().slice(0, 500),
-      new Date().toISOString()
-    ];
-    const sheet = earningsSheet(spreadsheet, EARNINGS_PAYCHECK_SHEET, EARNINGS_PAYCHECK_COLUMNS);
-    const existing = earningsReadRows(sheet, EARNINGS_PAYCHECK_COLUMNS).find(record => record.periodStart === periodStart);
-    earningsWriteRow(sheet, existing ? existing.row : sheet.getLastRow() + 1, values);
     return buildDashboard(spreadsheet, todayBusinessDate());
   });
 }
@@ -368,12 +371,6 @@ function addPaySchedule(input) {
     const schedules = earningsSchedules(spreadsheet);
     if (startDate <= schedules[schedules.length - 1].startDate) {
       throw new Error("A new schedule must start after the current schedule's start date.");
-    }
-    const lockedThrough = earningsPaychecks(spreadsheet)
-      .filter(record => record.status === "verified")
-      .reduce((latest, record) => record.periodEnd > latest ? record.periodEnd : latest, "");
-    if (lockedThrough && startDate <= lockedThrough) {
-      throw new Error(`Verified pay periods run through ${lockedThrough}. Start the new schedule after that date.`);
     }
     const scheduleSheet = earningsSheet(spreadsheet, EARNINGS_SCHEDULE_SHEET, EARNINGS_SCHEDULE_COLUMNS);
     earningsWriteRow(scheduleSheet, scheduleSheet.getLastRow() + 1, [startDate, periodDays, new Date().toISOString()]);
@@ -390,14 +387,6 @@ function addPaySchedule(input) {
         ...shift, payPeriodStart: period.start, payPeriodEnd: period.end, updatedAt: new Date().toISOString()
       }));
       moved++;
-    });
-    const paycheckSheet = earningsSheet(spreadsheet, EARNINGS_PAYCHECK_SHEET, EARNINGS_PAYCHECK_COLUMNS);
-    earningsReadRows(paycheckSheet, EARNINGS_PAYCHECK_COLUMNS).forEach(record => {
-      if (!record.periodStart || record.periodEnd < startDate) return;
-      const period = earningsPayPeriod(updatedSchedules, record.periodStart);
-      if (period.start !== record.periodStart || period.end === record.periodEnd) return;
-      earningsWriteRow(paycheckSheet, record.row, EARNINGS_PAYCHECK_COLUMNS.map(column =>
-        column === "periodEnd" ? period.end : record[column]));
     });
     return { ...buildDashboard(spreadsheet, todayBusinessDate()), moved };
   });

@@ -50,14 +50,47 @@ const rows = page => page.locator("#shiftTable tbody tr.shift").evaluateAll(item
   items.map(row => [...row.cells].map(cell => cell.textContent.trim())));
 const money = cents => "$" + (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 });
 
+test("owner saves rates, reviews a transfer and keeps earlier rates after a raise", async t => {
+  const { page, url } = await start(t);
+  await page.goto(url);
+  await page.locator("#periodTitle").waitFor();
+  await page.locator("#ratesForm input[name=bartender]").fill("12.50");
+  await page.locator("#ratesForm input[name=manager]").fill("15.25");
+  await page.locator("#ratesForm button").click();
+  await page.waitForFunction(() => document.getElementById("ratesStatus").textContent === "Hourly rates saved.");
+  await page.locator("summary", { hasText: "Import a shift" }).click();
+  const transfer = { version: 1, shiftDate: "2026-11-06", venue: "Ivy House", eventType: "non-wedding",
+    entries: [{ role: "Bartender", hours: 5, cashTipsCents: 5000, creditTipsCents: 2500, guaranteeCents: 0 }] };
+  await page.locator("#shiftTransfer").fill(JSON.stringify(transfer));
+  await page.locator("#reviewTransfer").click();
+  assert.match(await page.locator("#transferReview").innerText(), /Bartender: 5 hours at \$12\.50\/hour/);
+  await page.locator("#confirmTransfer").click();
+  await page.waitForFunction(() => document.getElementById("transferStatus").textContent === "Shift saved.");
+  assert.equal(await page.locator("#totalGross").textContent(), "$137.50");
+  await page.locator("#shiftTransfer").fill(JSON.stringify(transfer));
+  await page.locator("#reviewTransfer").click();
+  await page.locator("#confirmTransfer").click();
+  await page.waitForFunction(() => document.getElementById("transferStatus").textContent.includes("already saved"));
+  await page.locator("#ratesForm input[name=bartender]").fill("20");
+  await page.locator("#ratesForm button").click();
+  await page.waitForFunction(() => document.getElementById("ratesStatus").textContent === "Hourly rates saved.");
+  await page.reload();
+  await page.locator("#periodTitle").waitFor();
+  assert.equal(await page.locator("#ratesForm input[name=bartender]").inputValue(), "20.00");
+  await page.locator("#periodSelect").selectOption("2026-11-02");
+  assert.equal(await page.locator("#totalGross").textContent(), "$137.50");
+});
+
 test("the main page opens on the current pay period with shifts, details, and large totals", async t => {
   const { page, url, dev } = await start(t, { seed: seedPayPeriod });
   await page.goto(url);
   await page.locator("#periodTitle").waitFor();
-  assert.equal(await page.locator("h1").textContent(), "WILL'S EARNINGS");
+  assert.equal(await page.locator("h1").textContent(), "MY EARNINGS");
   assert.equal(await page.locator("#periodTitle").textContent(), "Pay Period: November 16 – November 29");
   assert.equal(await page.locator("#currentPill").isVisible(), true);
-  assert.equal(await page.locator("#statusPill").textContent(), "Awaiting Paycheck");
+  assert.equal(await page.locator("#statusPill").count(), 0);
+  assert.equal(await page.locator("#paycheckForm").count(), 0);
+  assert.doesNotMatch(await page.locator("main").innerText(), /Paycheck Verification|Awaiting Paycheck|Needs Review/);
   const period = JSON.parse(JSON.stringify(dev.app.context.getEarningsData())).periods[0];
   assert.deepEqual(await rows(page), period.shifts.map(shift => [
     new Date(`${shift.shiftDate}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }),
@@ -109,38 +142,29 @@ test("shifts can be corrected and deleted, and totals update immediately", async
   assert.equal(await page.locator("#totalHours").textContent(), "23.5");
 });
 
-test("paycheck verification compares estimated and actual deposits and locks verified periods", async t => {
-  const { page, url } = await start(t, { seed: seedPayPeriod });
+test("legacy verified periods have no verification controls and remain editable", async t => {
+  const { page, url } = await start(t, {
+    seed: app => {
+      seedPayPeriod(app);
+      const sheet = app.context.getDataSpreadsheet(DEV_OWNER).insertSheet("Paychecks");
+      sheet.rows.push(["periodStart", "periodEnd", "status"], ["2026-11-16", "2026-11-29", "verified"]);
+    }
+  });
   await page.goto(url);
   await page.locator("#periodTitle").waitFor();
-  await page.locator("#olderPeriod").click();
-  assert.equal(await page.locator("#periodTitle").textContent(), "Pay Period: November 2 – November 15");
-  assert.equal(await page.locator("#currentPill").isVisible(), false);
-  assert.deepEqual((await rows(page)).map(row => row[0]), ["Nov 4"]);
-  const estimate = await page.locator("#totalDeposit").textContent();
-  assert.match(await page.locator("#comparison").textContent(), new RegExp(`Estimated paycheck deposit\\s*\\${estimate}`));
-
-  await page.locator('#paycheckForm label:has(input[value="needs_review"])').click();
-  await page.locator("#paycheckForm input[name=actualDeposit]").fill("70.00");
-  await page.locator("#paycheckForm input[name=actualGross]").fill("192.50");
-  await page.locator("#paycheckForm button[type=submit]").click();
-  await page.waitForFunction(() => document.getElementById("paycheckStatus").textContent === "Paycheck saved.");
-  assert.equal(await page.locator("#statusPill").textContent(), "Needs Review");
-  const comparison = await page.locator("#comparison").textContent();
-  assert.match(comparison, /Actual paycheck deposit\s*\$70\.00/);
-  assert.match(comparison, /Difference\s*\$\d+\.\d\d (higher|lower) than the estimated deposit/);
-  assert.match(comparison, /before assuming an error/);
-
-  await page.locator('#paycheckForm label:has(input[value="verified"])').click();
-  await page.locator("#paycheckForm button[type=submit]").click();
-  await page.waitForFunction(() => document.getElementById("statusPill").textContent === "Verified");
-  await page.locator("#shiftTable button", { hasText: "Nov 4" }).click();
-  assert.match(await page.locator(".detail").textContent(), /Verified\. Change its paycheck status/);
-  assert.equal(await page.locator(".detail button", { hasText: "Edit" }).count(), 0);
-
-  await page.locator("#newerPeriod").click();
-  assert.equal(await page.locator("#periodTitle").textContent(), "Pay Period: November 16 – November 29");
-  assert.equal(await page.locator("#newerPeriod").isDisabled(), true);
+  assert.equal(await page.locator("#paycheckForm").count(), 0);
+  assert.equal(await page.locator("#statusPill").count(), 0);
+  await page.locator("#shiftTable button", { hasText: "Nov 20" }).click();
+  await page.locator(".detail button", { hasText: "Edit" }).click();
+  await page.locator("#editForm input[name=hours]").fill("9");
+  await page.locator("#editForm button[type=submit]").click();
+  await page.waitForFunction(() => document.getElementById("shiftStatus").textContent === "Shift updated.");
+  assert.equal((await rows(page))[0][1], "9.0");
+  const updatedTotals = await page.evaluate(async () => {
+    const response = await fetch("/api/getEarningsData", { method: "POST", body: "[]" });
+    return (await response.json()).result.periods[0].totals;
+  });
+  assert.equal(await page.locator("#totalDeposit").textContent(), money(updatedTotals.depositCents));
 });
 
 test("an empty pay period, a failed load, and narrow screens are handled cleanly", async t => {

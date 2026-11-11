@@ -40,7 +40,7 @@ window.google = { script: { run: (function make(success, failure) {
 })() } };
 </script>`;
 
-const API = ["getEarningsData", "updateShift", "deleteShift", "savePaycheck", "addPaySchedule"];
+const API = ["getEarningsData", "updateShift", "deleteShift", "addPaySchedule", "saveHourlyRates", "saveTransferredShift"];
 
 function createServer(options = {}) {
   const dev = createDevApp(options);

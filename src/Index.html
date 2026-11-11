@@ -4,11 +4,11 @@
   <base target="_top">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Will's Earnings</title>
+  <title>My Earnings</title>
   <style>
     :root{
       --bg:#f6f7f9; --card:#fff; --border:#e5e7eb; --text:#111827; --muted:#6b7280;
-      --green:#1f9d55; --green-dark:#178a48; --red:#b91c1c; --amber:#92400e;
+      --green:#1f9d55; --green-dark:#178a48; --red:#b91c1c;
     }
     *{ box-sizing:border-box; }
     body{ margin:0; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
@@ -32,9 +32,6 @@
     .period-heading{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
     h2{ margin:0; font-size:20px; font-weight:900; }
     .pill{ display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:800; letter-spacing:.3px; border:1px solid; }
-    .pill.awaiting{ color:#374151; background:#f3f4f6; border-color:#d1d5db; }
-    .pill.verified{ color:#166534; background:#f0fdf4; border-color:#86efac; }
-    .pill.needs_review{ color:var(--amber); background:#fffbeb; border-color:#fcd34d; }
     .pill.current{ color:#1e3a8a; background:#eff6ff; border-color:#bfdbfe; }
     .muted{ color:var(--muted); font-size:13px; }
     table{ width:100%; border-collapse:collapse; margin-top:14px; font-size:15px; }
@@ -63,14 +60,6 @@
     label{ display:block; font-size:13px; font-weight:700; }
     label > input, label > select, label > textarea{ margin-top:5px; }
     .full{ grid-column:1 / -1; }
-    .segmented{ display:flex; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
-    .segmented label{ flex:1; margin:0; cursor:pointer; }
-    .segmented input{ position:absolute; opacity:0; width:1px; height:1px; }
-    .segmented span{ display:block; padding:10px 8px; text-align:center; font-weight:700; font-size:14px; }
-    .segmented label + label span{ border-left:1px solid var(--border); }
-    .segmented input:checked + span{ background:var(--green); color:#fff; }
-    .segmented input:focus-visible + span{ box-shadow:inset 0 0 0 3px rgba(31,157,85,.35); }
-    .comparison{ margin-top:14px; border-top:1px solid var(--border); padding-top:10px; }
     details summary{ cursor:pointer; font-weight:800; }
     .status{ min-height:20px; margin-top:10px; font-size:14px; font-weight:600; }
     .status.error{ color:var(--red); }
@@ -91,7 +80,7 @@
 <body>
   <div class="app">
     <header>
-      <h1>WILL'S EARNINGS</h1>
+      <h1>MY EARNINGS</h1>
       <span class="private-note">Private · only your Google account can open this page</span>
     </header>
 
@@ -111,7 +100,6 @@
         <div class="period-heading">
           <h2 id="periodTitle"></h2>
           <span id="currentPill" class="pill current" hidden>Current</span>
-          <span id="statusPill" class="pill"></span>
         </div>
         <div id="shiftTable"></div>
         <p id="shiftStatus" class="status" role="status"></p>
@@ -124,42 +112,41 @@
           <div class="total"><span>TOTAL AFTER ESTIMATED TAXES</span><strong id="totalNet"></strong></div>
           <div class="total"><span>CASH TIPS ALREADY RECEIVED</span><strong id="totalCash"></strong></div>
           <div class="total deposit">
-            <span>ESTIMATED PAYCHECK DEPOSIT</span><strong id="totalDeposit"></strong>
-            <p class="muted">After-tax earnings minus cash tips you already took home. Payroll withholding and deductions can differ, so this is an estimate.</p>
+            <span>ESTIMATED PAYROLL DEPOSIT</span><strong id="totalDeposit"></strong>
+            <p class="muted">After-tax earnings minus cash tips you already took home. The actual deposit may differ.</p>
           </div>
         </div>
       </section>
 
-      <section class="card" aria-labelledby="paycheckTitle">
-        <h2 id="paycheckTitle">Paycheck Verification</h2>
-        <p class="muted">Optional. Enter what your paystub shows to compare it with your tracked earnings.</p>
-        <form id="paycheckForm">
-          <div class="form-grid">
-            <div class="full">
-              <span class="muted" id="paycheckStatusLabel">Status</span>
-              <div class="segmented" role="radiogroup" aria-labelledby="paycheckStatusLabel">
-                <label><input type="radio" name="status" value="awaiting"><span>Awaiting Paycheck</span></label>
-                <label><input type="radio" name="status" value="verified"><span>Verified</span></label>
-                <label><input type="radio" name="status" value="needs_review"><span>Needs Review</span></label>
-              </div>
-            </div>
-            <label>Actual gross pay ($)<input name="actualGross" inputmode="decimal" placeholder="0.00"></label>
-            <label>Actual taxes withheld ($)<input name="actualTaxes" inputmode="decimal" placeholder="0.00"></label>
-            <label>Actual paycheck deposit ($)<input name="actualDeposit" inputmode="decimal" placeholder="0.00"></label>
-            <label>Other deductions or adjustments ($)<input name="adjustments" inputmode="decimal" placeholder="-0.00"></label>
-            <label class="full">Notes<textarea name="notes" rows="2" maxlength="500"></textarea></label>
-          </div>
-          <div class="actions"><button class="primary" type="submit">Save Paycheck</button></div>
-        </form>
-        <div id="comparison" class="comparison"></div>
-        <p id="paycheckStatus" class="status" role="status"></p>
+      <section class="card">
+        <details id="ratesDetails">
+          <summary>My hourly pay rates</summary>
+          <p class="muted">Enter both rates once. Change them after a raise; existing shifts keep their original rates.</p>
+          <form id="ratesForm" class="form-grid">
+            <label>Bartender hourly rate ($)<input name="bartender" type="number" min="0" max="100000" step="0.01" required></label>
+            <label>Shift manager hourly rate ($)<input name="manager" type="number" min="0" max="100000" step="0.01" required></label>
+            <div class="full actions"><button type="submit">Save Rates</button></div>
+          </form>
+          <p id="ratesStatus" class="status" role="status"></p>
+        </details>
+      </section>
+
+      <section class="card">
+        <details>
+          <summary>Import a shift from the calculator</summary>
+          <p class="muted">Paste your transfer from TwoBirds Tipout, review it, and confirm. Your rates stay in your private tracker. Multiple role entries are saved separately.</p>
+          <label>Shift transfer<textarea id="shiftTransfer" rows="4"></textarea></label>
+          <div class="actions"><button id="reviewTransfer" type="button">Review Shift</button></div>
+          <div id="transferReview" hidden></div>
+          <p id="transferStatus" class="status" role="status"></p>
+        </details>
       </section>
 
       <section class="card">
         <details>
           <summary>Pay schedule</summary>
           <p class="muted" id="scheduleSummary"></p>
-          <p class="muted">If your employer changes the schedule, enter the first day of the new schedule. Shifts before that date keep their recorded pay periods, and the new schedule must start after any Verified paycheck.</p>
+          <p class="muted">If your employer changes the schedule, enter the first day of the new schedule. Shifts before that date keep their recorded pay periods.</p>
           <form id="scheduleForm" class="form-grid">
             <label>New schedule starts on<input name="startDate" type="date" required></label>
             <label>Days per pay period<input name="periodDays" type="number" min="7" max="31" step="1" value="14" required></label>
@@ -178,6 +165,7 @@ let periodStart = "";
 let selectedShift = "";
 let editingShift = "";
 let busy = false;
+let reviewedTransfer = null;
 
 function api(name, ...args){
   return new Promise((resolve, reject) => {
@@ -224,8 +212,6 @@ function periodLabel(period){
   return `${longDate(period.start)} – ${longDate(period.end)}`;
 }
 
-const STATUS_LABELS = { awaiting: "Awaiting Paycheck", verified: "Verified", needs_review: "Needs Review" };
-
 function setStatus(id, message, type = ""){
   $(id).textContent = message;
   $(id).className = `status ${type}`.trim();
@@ -248,18 +234,14 @@ function render(){
   $("newerPeriod").disabled = index <= 0;
   $("periodTitle").textContent = `Pay Period: ${periodLabel(period)}`;
   $("currentPill").hidden = !period.isCurrent;
-  $("statusPill").textContent = STATUS_LABELS[period.paycheck.status];
-  $("statusPill").className = `pill ${period.paycheck.status}`;
   renderShifts(period);
   renderTotals(period);
-  renderPaycheck(period);
   const latest = dashboard.schedules[dashboard.schedules.length - 1];
   $("scheduleSummary").textContent =
     `Current schedule: ${latest.periodDays}-day pay periods counted from ${longDate(latest.startDate)}, ${latest.startDate.slice(0, 4)}.`;
 }
 
 function renderShifts(period){
-  const locked = period.paycheck.status === "verified";
   const rows = period.shifts.map(shift => {
     const selected = shift.id === selectedShift;
     const id = escapeHtml(shift.id);
@@ -268,7 +250,7 @@ function renderShifts(period){
         <td class="right">${formatHours(shift.hours)}</td>
         <td class="right">${money(shift.grossCents)}</td>
         <td class="right">${money(shift.netCents)}</td>
-      </tr>${selected ? `<tr class="detail-row"><td colspan="4">${renderDetail(shift, locked)}</td></tr>` : ""}`;
+      </tr>${selected ? `<tr class="detail-row"><td colspan="4">${renderDetail(shift)}</td></tr>` : ""}`;
   }).join("");
   $("shiftTable").innerHTML = `<table>
     <thead><tr><th>Date</th><th class="right">Hours</th><th class="right">Before Tax</th><th class="right">After Tax</th></tr></thead>
@@ -277,7 +259,7 @@ function renderShifts(period){
   </table>`;
 }
 
-function renderDetail(shift, locked){
+function renderDetail(shift){
   const wedding = shift.eventType === "wedding";
   if (editingShift === shift.id) {
     const field = (name, label, value, attrs = "") =>
@@ -317,10 +299,10 @@ function renderDetail(shift, locked){
     ${line("After estimated tax", money(shift.netCents), true)}
     ${line("Cash already received", money(-shift.cashReceivedCents))}
     ${line("Expected through payroll", money(shift.depositCents), true)}
-    ${locked ? '<p class="muted">This pay period is Verified. Change its paycheck status to edit or delete shifts.</p>' : `<div class="actions">
+    <div class="actions">
       <button type="button" data-action="edit" data-id="${escapeHtml(shift.id)}">Edit</button>
       <button type="button" class="danger" data-action="delete" data-id="${escapeHtml(shift.id)}">Delete</button>
-    </div>`}
+    </div>
   </div>`;
 }
 
@@ -331,33 +313,6 @@ function renderTotals(period){
   $("totalNet").textContent = money(totals.netCents);
   $("totalCash").textContent = money(totals.cashTipsCents);
   $("totalDeposit").textContent = money(totals.depositCents);
-}
-
-function renderPaycheck(period){
-  const paycheck = period.paycheck;
-  const form = $("paycheckForm");
-  form.querySelector(`input[name="status"][value="${paycheck.status}"]`).checked = true;
-  form.elements.actualGross.value = centsInput(paycheck.actualGrossCents);
-  form.elements.actualTaxes.value = centsInput(paycheck.actualTaxesCents);
-  form.elements.actualDeposit.value = centsInput(paycheck.actualDepositCents);
-  form.elements.adjustments.value = centsInput(paycheck.adjustmentsCents);
-  form.elements.notes.value = paycheck.notes || "";
-  const difference = (cents, noun) => cents === 0 ? `Matches the estimated ${noun}.`
-    : `${money(Math.abs(cents))} ${cents > 0 ? "higher" : "lower"} than the estimated ${noun}.`;
-  const lines = [
-    `<div class="line"><span>Estimated paycheck deposit</span><span>${money(period.totals.depositCents)}</span></div>`,
-    `<div class="line"><span>Actual paycheck deposit</span><span>${paycheck.actualDepositCents === null ? "Not entered" : money(paycheck.actualDepositCents)}</span></div>`
-  ];
-  if (paycheck.depositDifferenceCents !== null) {
-    lines.push(`<div class="line strong"><span>Difference</span><span>${difference(paycheck.depositDifferenceCents, "deposit")}</span></div>`);
-  }
-  if (paycheck.grossDifferenceCents !== null) {
-    lines.push(`<div class="line"><span>Gross pay vs. tracked earnings</span><span>${difference(paycheck.grossDifferenceCents, "gross")}</span></div>`);
-  }
-  if (paycheck.depositDifferenceCents !== null || paycheck.grossDifferenceCents !== null) {
-    lines.push('<p class="muted">Differences can come from payroll withholding, benefits, or other deductions. Compare with your paystub before assuming an error.</p>');
-  }
-  $("comparison").innerHTML = lines.join("");
 }
 
 async function run(statusId, pending, work, success){
@@ -384,6 +339,12 @@ async function load(){
   $("loadError").hidden = true;
   try {
     dashboard = await api("getEarningsData");
+    if (dashboard.hourlyRates) {
+      $("ratesForm").elements.bartender.value = centsInput(dashboard.hourlyRates.bartenderCents);
+      $("ratesForm").elements.manager.value = centsInput(dashboard.hourlyRates.managerCents);
+    } else {
+      $("ratesDetails").open = true;
+    }
     periodStart = dashboard.currentPeriodStart;
     $("main").hidden = false;
     render();
@@ -400,7 +361,6 @@ $("periodSelect").addEventListener("change", event => {
   periodStart = event.target.value;
   selectedShift = editingShift = "";
   setStatus("shiftStatus", "");
-  setStatus("paycheckStatus", "");
   render();
 });
 $("olderPeriod").addEventListener("click", () => {
@@ -456,14 +416,6 @@ $("shiftTable").addEventListener("submit", event => {
   });
 });
 
-$("paycheckForm").addEventListener("submit", event => {
-  event.preventDefault();
-  const form = event.target;
-  const values = Object.fromEntries(new FormData(form));
-  values.periodStart = currentPeriod().start;
-  run("paycheckStatus", "Saving paycheck…", () => api("savePaycheck", values), "Paycheck saved.");
-});
-
 $("scheduleForm").addEventListener("submit", event => {
   event.preventDefault();
   const form = event.target;
@@ -471,6 +423,72 @@ $("scheduleForm").addEventListener("submit", event => {
   if (!confirm(`Start ${values.periodDays}-day pay periods on ${values.startDate}? Shifts on or after that date will be regrouped.`)) return;
   run("scheduleStatus", "Updating schedule…", () => api("addPaySchedule", values),
     result => `Schedule updated. ${result.moved} shift${result.moved === 1 ? "" : "s"} regrouped.`);
+});
+
+$("ratesForm").addEventListener("submit", event => {
+  event.preventDefault();
+  if (!event.target.reportValidity()) return;
+  const values = Object.fromEntries(new FormData(event.target));
+  run("ratesStatus", "Saving hourly rates…", () => api("saveHourlyRates", values), result => {
+    dashboard.hourlyRates = result;
+    reviewedTransfer = null;
+    $("transferReview").hidden = true;
+    return "Hourly rates saved.";
+  });
+});
+
+$("shiftTransfer").addEventListener("input", () => {
+  reviewedTransfer = null;
+  $("transferReview").hidden = true;
+  setStatus("transferStatus", "");
+});
+
+$("reviewTransfer").addEventListener("click", () => {
+  try {
+    const data = JSON.parse($("shiftTransfer").value);
+    if (!data || data.version !== 1 || !Array.isArray(data.entries) || !data.entries.length ||
+        typeof data.shiftDate !== "string" || typeof data.venue !== "string" ||
+        !["wedding", "non-wedding"].includes(data.eventType) ||
+        data.entries.some(entry => !entry || !["Bartender", "Shift Manager"].includes(entry.role) ||
+          typeof entry.hours !== "number" ||
+          !["cashTipsCents", "creditTipsCents", "guaranteeCents"].every(field => Number.isSafeInteger(entry[field])))) {
+      throw new Error("Invalid transfer.");
+    }
+    reviewedTransfer = data;
+    if (!dashboard.hourlyRates) throw new Error("Save your hourly rates before importing a shift.");
+    $("transferReview").innerHTML = `<p><strong>${escapeHtml(data.shiftDate)} · ${escapeHtml(data.venue)} · ${escapeHtml(data.eventType)}</strong></p>` +
+      data.entries.map(entry => `<p>${escapeHtml(entry.role)}: ${escapeHtml(entry.hours)} hours at ${money(entry.role === "Bartender" ? dashboard.hourlyRates.bartenderCents : dashboard.hourlyRates.managerCents)}/hour · Cash ${money(entry.cashTipsCents)} · Credit ${money(entry.creditTipsCents)}${data.eventType === "wedding" ? ` · Guarantee ${money(entry.guaranteeCents)}` : ""}</p>`).join("") +
+      '<button id="confirmTransfer" class="primary" type="button">Confirm and Save Shift</button>';
+    $("transferReview").hidden = false;
+    setStatus("transferStatus", "Check the details above before saving.");
+  } catch (error) {
+    reviewedTransfer = null;
+    $("transferReview").hidden = true;
+    setStatus("transferStatus", error.message === "Save your hourly rates before importing a shift."
+      ? error.message : "Invalid transfer. Copy it again from the calculator.", "error");
+  }
+});
+
+$("transferReview").addEventListener("click", async event => {
+  if (event.target.id !== "confirmTransfer" || !reviewedTransfer) return;
+  const transfer = reviewedTransfer;
+  $("shiftTransfer").disabled = true;
+  $("reviewTransfer").disabled = true;
+  $("confirmTransfer").disabled = true;
+  try {
+    await run("transferStatus", "Saving shift…", () => api("saveTransferredShift", transfer), result => {
+      periodStart = result.periods.find(period => period.shifts.some(shift =>
+        shift.shiftDate === transfer.shiftDate))?.start || result.currentPeriodStart;
+      reviewedTransfer = null;
+      $("shiftTransfer").value = "";
+      $("transferReview").hidden = true;
+      return "Shift saved.";
+    });
+  } finally {
+    $("shiftTransfer").disabled = false;
+    $("reviewTransfer").disabled = false;
+    if ($("confirmTransfer")) $("confirmTransfer").disabled = false;
+  }
 });
 
 load();
